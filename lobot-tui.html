@@ -70,34 +70,25 @@ sudo journalctl -u lobot-collector -f
 curl -s http://localhost:9095/api/state | python3 -m json.tool</code></pre>
 <p>lobot-tui reads exclusively from this service (<code>svc</code> tag always shown in the status bar). If the service is not running, lobot-tui displays an error in the status bar with the command to start it — there is no kubectl fallback.</p>
 <p><strong>Deploying updates to the collector:</strong></p>
-<p><strong>Important:</strong> <code>parsers.py</code> lives inside <code>lobot_tui/data/</code> and is imported by the collector service. When updating the service, always push <strong>both</strong> directories:</p>
-<pre><code># Push lobot_tui (contains parsers.py, shared with the collector)
-rsync -avz --exclude '__pycache__' --exclude '*.pyc' --exclude '.venv' \
-  /opt/Lobot/tools/lobot_tui/ PROD_HOST:/opt/Lobot/tools/lobot_tui/
-
-# Push collector
-rsync -avz --exclude '__pycache__' --exclude '*.pyc' --exclude '.venv' \
-  /opt/Lobot/tools/lobot_collector/ PROD_HOST:/opt/Lobot/tools/lobot_collector/
-
-ssh PROD_HOST "sudo systemctl restart lobot-collector"</code></pre>
+<p><strong>Important:</strong> <code>parsers.py</code> lives inside <code>lobot_tui/data/</code> and is imported by the collector service. After pulling updates, always restart the collector to pick up any changes to shared code:</p>
+<pre><code>cd /opt/Lobot &amp;&amp; git pull
+cd /opt/Lobot/tools &amp;&amp; git pull
+sudo systemctl restart lobot-collector</code></pre>
 <hr />
 <h2>Deploying Updates</h2>
-<p>To push the latest code from the dev control plane to prod in one command:</p>
-<pre><code># Push TUI (always push this — parsers.py is here and shared with the collector)
-rsync -avz --exclude '__pycache__' --exclude '*.pyc' --exclude '.venv' \
-  /opt/Lobot/tools/lobot_tui/ PROD_HOST:/opt/Lobot/tools/lobot_tui/
+<p>To update the tools on the control plane:</p>
+<pre><code>cd /opt/Lobot &amp;&amp; git pull
+cd /opt/Lobot/tools &amp;&amp; git pull
 
-# Push collector (then restart the service)
-rsync -avz --exclude '__pycache__' --exclude '*.pyc' --exclude '.venv' \
-  /opt/Lobot/tools/lobot_collector/ PROD_HOST:/opt/Lobot/tools/lobot_collector/
-ssh PROD_HOST "sudo systemctl restart lobot-collector"</code></pre>
-<p>Replace <code>PROD_HOST</code> with the production control plane hostname.</p>
-<p><strong>First-time setup on prod</strong> (if the venv doesn't exist yet):</p>
-<pre><code>ssh PROD_HOST "python3 -m venv /opt/Lobot/tools/lobot_tui/.venv && \
-  /opt/Lobot/tools/lobot_tui/.venv/bin/pip install -q textual aiofiles"
+# Restart the collector to pick up code changes
+# (parsers.py lives in lobot_tui/data/ and is shared with the collector)
+sudo systemctl restart lobot-collector</code></pre>
+<p><strong>First-time setup</strong> (if the venv doesn't exist yet):</p>
+<pre><code>python3 -m venv /opt/Lobot/tools/lobot_tui/.venv
+/opt/Lobot/tools/lobot_tui/.venv/bin/pip install -r /opt/Lobot/tools/lobot_tui/requirements-tui.txt
 
-ssh PROD_HOST "python3 -m venv /opt/Lobot/tools/lobot_collector/.venv && \
-  /opt/Lobot/tools/lobot_collector/.venv/bin/pip install -q aiohttp"</code></pre>
+python3 -m venv /opt/Lobot/tools/lobot_collector/.venv
+/opt/Lobot/tools/lobot_collector/.venv/bin/pip install -r /opt/Lobot/tools/lobot_collector/requirements-collector.txt</code></pre>
 <h3>Environment variables</h3>
 <p><code>lobot-tui</code> and <code>lobot-collector</code> read two optional environment variables to locate the cluster-config repo and the tools directory.</p>
 <table>

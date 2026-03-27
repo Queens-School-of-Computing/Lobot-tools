@@ -364,6 +364,17 @@ sudo apt install python3-pip -y
 pip3 install requests pyyaml
 ```
 
+### Updating the repos
+
+To pull the latest changes after pushing from your workstation:
+
+```bash
+cd /opt/Lobot && git pull
+cd /opt/Lobot/tools && git pull
+```
+
+This updates both the cluster-config repo and the tools repo.
+
 ---
 
 ## Step 16 — JupyterHub Config (First Time)

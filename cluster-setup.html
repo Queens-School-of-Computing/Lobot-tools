@@ -245,6 +245,11 @@ sudo chown -R croot:croot /opt/Lobot/tools
 # Install Python dependencies needed by Lobot tools
 sudo apt install python3-pip -y
 pip3 install requests pyyaml</code></pre>
+<h3>Updating the repos</h3>
+<p>To pull the latest changes after pushing from your workstation:</p>
+<pre><code>cd /opt/Lobot &amp;&amp; git pull
+cd /opt/Lobot/tools &amp;&amp; git pull</code></pre>
+<p>This updates both the cluster-config repo and the tools repo.</p>
 <hr />
 <h2>Step 16 — JupyterHub Config (First Time)</h2>
 <p>The JupyterHub config uses two files:</p>

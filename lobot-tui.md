@@ -93,47 +93,37 @@ lobot-tui reads exclusively from this service (`svc` tag always shown in the sta
 
 **Deploying updates to the collector:**
 
-> **Important:** `parsers.py` lives inside `lobot_tui/data/` and is imported by the collector service. When updating the service, always push **both** directories:
+> **Important:** `parsers.py` lives inside `lobot_tui/data/` and is imported by the collector service. After pulling updates, always restart the collector to pick up any changes to shared code:
 
 ```bash
-# Push lobot_tui (contains parsers.py, shared with the collector)
-rsync -avz --exclude '__pycache__' --exclude '*.pyc' --exclude '.venv' \
-  /opt/Lobot/tools/lobot_tui/ PROD_HOST:/opt/Lobot/tools/lobot_tui/
-
-# Push collector
-rsync -avz --exclude '__pycache__' --exclude '*.pyc' --exclude '.venv' \
-  /opt/Lobot/tools/lobot_collector/ PROD_HOST:/opt/Lobot/tools/lobot_collector/
-
-ssh PROD_HOST "sudo systemctl restart lobot-collector"
+cd /opt/Lobot && git pull
+cd /opt/Lobot/tools && git pull
+sudo systemctl restart lobot-collector
 ```
 
 ---
 
 ## Deploying Updates
 
-To push the latest code from the dev control plane to prod in one command:
+To update the tools on the control plane:
 
 ```bash
-# Push TUI (always push this — parsers.py is here and shared with the collector)
-rsync -avz --exclude '__pycache__' --exclude '*.pyc' --exclude '.venv' \
-  /opt/Lobot/tools/lobot_tui/ PROD_HOST:/opt/Lobot/tools/lobot_tui/
+cd /opt/Lobot && git pull
+cd /opt/Lobot/tools && git pull
 
-# Push collector (then restart the service)
-rsync -avz --exclude '__pycache__' --exclude '*.pyc' --exclude '.venv' \
-  /opt/Lobot/tools/lobot_collector/ PROD_HOST:/opt/Lobot/tools/lobot_collector/
-ssh PROD_HOST "sudo systemctl restart lobot-collector"
+# Restart the collector to pick up code changes
+# (parsers.py lives in lobot_tui/data/ and is shared with the collector)
+sudo systemctl restart lobot-collector
 ```
 
-Replace `PROD_HOST` with the production control plane hostname.
-
-**First-time setup on prod** (if the venv doesn't exist yet):
+**First-time setup** (if the venv doesn't exist yet):
 
 ```bash
-ssh PROD_HOST "python3 -m venv /opt/Lobot/tools/lobot_tui/.venv && \
-  /opt/Lobot/tools/lobot_tui/.venv/bin/pip install -q textual aiofiles"
+python3 -m venv /opt/Lobot/tools/lobot_tui/.venv
+/opt/Lobot/tools/lobot_tui/.venv/bin/pip install -r /opt/Lobot/tools/lobot_tui/requirements-tui.txt
 
-ssh PROD_HOST "python3 -m venv /opt/Lobot/tools/lobot_collector/.venv && \
-  /opt/Lobot/tools/lobot_collector/.venv/bin/pip install -q aiohttp"
+python3 -m venv /opt/Lobot/tools/lobot_collector/.venv
+/opt/Lobot/tools/lobot_collector/.venv/bin/pip install -r /opt/Lobot/tools/lobot_collector/requirements-collector.txt
 ```
 
 ### Environment variables

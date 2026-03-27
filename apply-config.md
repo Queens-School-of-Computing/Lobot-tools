@@ -149,14 +149,18 @@ Review, then apply with:
 # 1. SSH to the control plane
 ssh lobot.cs.queensu.ca   # or lobot-dev.cs.queensu.ca for dev
 
-# 2. Run the script
+# 2. Pull the latest changes from GitHub
+cd /opt/Lobot && git pull
+cd /opt/Lobot/tools && git pull
+
+# 3. Run the script
 bash /opt/Lobot/tools/apply-config.sh
 
-# 3. Review the generated config.yaml to confirm secrets look correct
+# 4. Review the generated config.yaml to confirm secrets look correct
 #    and no placeholder "xxx" values remain
 grep -n 'xxx' /opt/Lobot/config.yaml
 
-# 4. Apply the helm upgrade (command is printed at the end of the script)
+# 5. Apply the helm upgrade (command is printed at the end of the script)
 cd /opt/Lobot
 RELEASE=jhub ; NAMESPACE=jhub ; helm upgrade --cleanup-on-fail $RELEASE \
   jupyterhub/jupyterhub --namespace $NAMESPACE \
