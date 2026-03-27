@@ -1,0 +1,21 @@
+# vi swap files
+*.sw[a-p]
+
+# python virtual env
+.venv
+.venv-dev/
+
+# Local session memory file
+LOBOT-MEMORY.md
+
+# Local IDE files
+.DS_Store
+.vscode.desktop
+OLD-cluster-setup.html
+
+# Test run logs (timestamped, one per run)
+tests/run-*.log
+
+# Python cache
+__pycache__/
+*.pyc
