@@ -12,7 +12,7 @@ Arguments:
                      Override: API_URL env var
 
   <group-roles-url>  URL to group-roles.yaml (positional, optional)
-                     Default: newcluster branch on GitHub
+                     Default: main branch on GitHub
                      Override: GROUP_ROLES_URL env var
 
   --dry-run          Preview changes without modifying anything
@@ -35,7 +35,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   exit 0
 fi
 
-DEFAULT_GROUP_ROLES_URL="https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/newcluster/group-roles.yaml"
+DEFAULT_GROUP_ROLES_URL="https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/group-roles.yaml"
 
 # 1. Get API_URL from $1 (if not a flag) or $API_URL env or default
 if [[ "${1:-}" != --* && -n "${1:-}" ]]; then

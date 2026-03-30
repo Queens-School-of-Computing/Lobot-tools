@@ -7,9 +7,9 @@ Three scripts for synchronising JupyterHub group membership from the
 that the hub's internal user and group state matches what is declared in source
 control.
 
-- **[`sync_groups.sh`](https://github.com/Queens-School-of-Computing/Lobot/blob/newcluster/tools/sync_groups.sh)** — Orchestrator: fetches the API token from Kubernetes and runs the two Python scripts in sequence
-- **[`ensure_group_users.py`](https://github.com/Queens-School-of-Computing/Lobot/blob/newcluster/tools/ensure_group_users.py)** — Creates any hub user accounts referenced by the `user:` field in `group-roles.yaml` that do not yet exist
-- **[`sync_group_membership.py`](https://github.com/Queens-School-of-Computing/Lobot/blob/newcluster/tools/sync_group_membership.py)** — Creates any missing hub groups and reconciles group membership to exactly match the `members:` list in `group-roles.yaml`
+- **[`sync_groups.sh`](https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/sync_groups.sh)** — Orchestrator: fetches the API token from Kubernetes and runs the two Python scripts in sequence
+- **[`ensure_group_users.py`](https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/ensure_group_users.py)** — Creates any hub user accounts referenced by the `user:` field in `group-roles.yaml` that do not yet exist
+- **[`sync_group_membership.py`](https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/sync_group_membership.py)** — Creates any missing hub groups and reconciles group membership to exactly match the `members:` list in `group-roles.yaml`
 
 These scripts need to be run each time `group-roles.yaml` is modified.
 Group membership in the hub admin page provides visual verification, and
@@ -58,7 +58,7 @@ environment variables or built-in defaults if not provided.
 | Argument | Description | Default |
 |----------|-------------|---------|
 | `<api-url>` | JupyterHub base API URL (positional, optional) | `https://lobot.cs.queensu.ca/hub/api` |
-| `<group-roles-url>` | URL to `group-roles.yaml` (positional, optional) | `newcluster` branch on GitHub |
+| `<group-roles-url>` | URL to `group-roles.yaml` (positional, optional) | `main` branch on GitHub |
 | `--dry-run` | Pass through to both Python scripts; no changes are made | — |
 | `--verbose` | Pass through to both Python scripts; enables HTTP request logging | — |
 
@@ -70,7 +70,7 @@ scripts unchanged.
 
 1. Reads `$1` as `API_URL` if provided; falls back to `$API_URL` env var or the prod default
 2. Reads `$2` as `GROUP_ROLES_URL` if provided and not a flag; falls back to
-   `$GROUP_ROLES_URL` env var or the default `newcluster` branch URL
+   `$GROUP_ROLES_URL` env var or the default `main` branch URL
 3. Fetches `JUPYTERHUB_API_TOKEN` from the `group-manager-token` Kubernetes
    Secret in the `jhub` namespace using `kubectl` + `base64 -d`
 4. Runs `ensure_group_users.py` to create any missing hub user accounts
@@ -89,11 +89,11 @@ scripts unchanged.
 # Live run on dev with explicit URLs
 ./sync_groups.sh \
   https://lobot-dev.cs.queensu.ca/hub/api \
-  https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/newcluster/group-roles.yaml
+  https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/group-roles.yaml
 
 # Or via env vars for dev
 API_URL=https://lobot-dev.cs.queensu.ca/hub/api \
-GROUP_ROLES_URL=https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/newcluster/group-roles.yaml \
+GROUP_ROLES_URL=https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/group-roles.yaml \
   ./sync_groups.sh --dry-run
 ```
 
@@ -124,7 +124,7 @@ python3 ensure_group_users.py \
 |------|-------------|---------|
 | `--api-url` | JupyterHub base API URL (required) | — |
 | `--token` | Admin API token. If omitted, uses `JUPYTERHUB_API_TOKEN` env var | — |
-| `--group-roles-url` | URL to `group-roles.yaml` | `newcluster` branch on GitHub |
+| `--group-roles-url` | URL to `group-roles.yaml` | `main` branch on GitHub |
 | `--dry-run` | Report what would be created without creating anything | — |
 | `--verbose` / `-v` | Log each HTTP request and response code | — |
 
@@ -258,7 +258,7 @@ automatically.
 ### group-roles.yaml URL selection
 
 `sync_groups.sh` uses the `GROUP_ROLES_URL` environment variable if set,
-otherwise falls back to the `newcluster` branch default.
+otherwise falls back to the `main` branch default.
 
 The easiest way to pick up both URLs from the control plane environment:
 
@@ -271,7 +271,7 @@ export GROUP_ROLES_URL=$(python3 -c "import yaml; print(yaml.safe_load(open('/op
 To override explicitly instead:
 
 ```bash
-GROUP_ROLES_URL=https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/newcluster/group-roles.yaml \
+GROUP_ROLES_URL=https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/group-roles.yaml \
   ./sync_groups.sh https://lobot-dev.cs.queensu.ca/hub/api
 ```
 

@@ -5,7 +5,7 @@
 A single bash script for updating the JupyterHub `config.yaml` on the control
 plane without manually copying secrets between files.
 
-- **[`apply-config.sh`](https://github.com/Queens-School-of-Computing/Lobot/blob/newcluster/tools/apply-config.sh)** — Pulls the latest config templates from GitHub, extracts secrets from the existing local `config.yaml`, substitutes them into the base template, and writes both `config.yaml` and `config-env.yaml` ready for `helm upgrade`
+- **[`apply-config.sh`](https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/apply-config.sh)** — Pulls the latest config templates from GitHub, extracts secrets from the existing local `config.yaml`, substitutes them into the base template, and writes both `config.yaml` and `config-env.yaml` ready for `helm upgrade`
 
 The script auto-detects whether it is running on the prod or dev cluster and
 selects the correct environment override file automatically. The existing

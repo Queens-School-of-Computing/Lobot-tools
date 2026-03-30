@@ -589,7 +589,7 @@ bash image-cleanup.sh \
 
 ### `[3]` apply-config
 
-Pulls the JupyterHub Helm config template from the `newcluster` GitHub branch, substitutes secrets from the existing config, and writes the output files. Runs `bash apply-config.sh` on the control plane.
+Pulls the JupyterHub Helm config template from the `main` GitHub branch, substitutes secrets from the existing config, and writes the output files. Runs `bash apply-config.sh` on the control plane.
 
 **What it does:**
 - Pulls config from GitHub (overwrites local state)
@@ -646,7 +646,7 @@ When implemented, save will write the two field values back to `announcement.yam
 ```bash
 git add /opt/Lobot/announcement.yaml
 git commit -m "chore: update announcement via lobot-tui"
-git push origin newcluster
+git push origin main
 ```
 
 The JupyterHub announcement banner updates within seconds as the hub fetches the new YAML from GitHub.
@@ -736,7 +736,7 @@ Each entry records the timestamp, exit code, and full command:
 [2026-03-15 14:22:10] [exit 0] $ kubectl cordon newcluster-gpu1
 [2026-03-15 14:22:15] [exit 0] $ kubectl logs -f jupyter-alice -n jhub --tail 500
 [2026-03-15 14:22:30] [exit 0] $ bash image-pull.sh -i queensschoolofcomputingdocker/gpu-jupyter-latest -b 3 -t 1200 --latest --yes
-[2026-03-15 14:22:35] [exit 0] $ git push origin newcluster
+[2026-03-15 14:22:35] [exit 0] $ git push origin main
 ```
 
 **Commands logged:**

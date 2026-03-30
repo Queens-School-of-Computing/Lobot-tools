@@ -12,7 +12,7 @@ DOCKERHUB_TAGS_URL = (
 
 RUNTIME_SETTING_URL = (
     "https://raw.githubusercontent.com/Queens-School-of-Computing/"
-    "Lobot/newcluster/runtime_setting.yaml"
+    "Lobot/main/runtime_setting.yaml"
 )
 
 

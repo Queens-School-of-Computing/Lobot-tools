@@ -2,8 +2,8 @@
 <h2>Overview</h2>
 <p>Two bash scripts for managing large container images across a Kubernetes cluster running containerd. Designed for clusters where images are large (10GB+) and network bandwidth must be carefully managed during image operations.</p>
 <ul>
-<li><a href="https://github.com/Queens-School-of-Computing/Lobot/blob/newcluster/tools/image-pull.sh" target="_blank" rel="noopener"><code>image-pull.sh</code></a> — Pre-pulls images across nodes in controlled batches to avoid saturating the network during helm upgrades</li>
-<li><a href="https://github.com/Queens-School-of-Computing/Lobot/blob/newcluster/tools/image-cleanup.sh" target="_blank" rel="noopener"><code>image-cleanup.sh</code></a> — Removes old image tags from all nodes while protecting images in active use by running pods</li>
+<li><a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/image-pull.sh" target="_blank" rel="noopener"><code>image-pull.sh</code></a> — Pre-pulls images across nodes in controlled batches to avoid saturating the network during helm upgrades</li>
+<li><a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/image-cleanup.sh" target="_blank" rel="noopener"><code>image-cleanup.sh</code></a> — Removes old image tags from all nodes while protecting images in active use by running pods</li>
 </ul>
 <p>Both scripts support <code>--dry-run</code> mode for safe pre-flight checks, and send HTML email notifications on completion via Python smtplib.</p>
 <p>Both scripts are designed to run from the cluster control plane with <code>kubectl</code> access and write log files automatically alongside their output.</p>

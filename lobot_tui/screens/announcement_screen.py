@@ -20,7 +20,7 @@ DEV_KEY = "announcement_dev"
 # Fallback URL if we can't read it from the env config
 _FALLBACK_URL = (
     "https://raw.githubusercontent.com/Queens-School-of-Computing/"
-    "Lobot/newcluster/announcement.yaml"
+    "Lobot/main/announcement.yaml"
 )
 
 
@@ -215,8 +215,8 @@ class AnnouncementScreen(ModalScreen):
                 footer.update(f"[red]git commit failed (exit {rc}): {detail}[/]")
                 return
 
-        rc, lines = await self._run_git(["git", "push", "origin", "newcluster"])
-        command_log.record("git push origin newcluster", lines, rc)
+        rc, lines = await self._run_git(["git", "push", "origin", "main"])
+        command_log.record("git push origin main", lines, rc)
         if rc != 0:
             detail = lines[0] if lines else "no output"
             footer.update(f"[red]git push failed (exit {rc}): {detail}[/]")

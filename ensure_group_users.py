@@ -8,7 +8,7 @@ import requests
 import yaml
 
 GROUP_ROLES_URL_DEFAULT = (
-    "https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/newcluster/group-roles.yaml"
+    "https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/group-roles.yaml"
 )
 
 

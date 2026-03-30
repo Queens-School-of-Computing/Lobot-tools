@@ -1,13 +1,13 @@
 # Kubernetes Image Management Scripts
-![Lobot Cluster Management](https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/newcluster/assets/images/cleanpullbanner.jpg)
+![Lobot Cluster Management](https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/assets/images/cleanpullbanner.jpg)
 ## Overview
 
 Two bash scripts for managing large container images across a Kubernetes cluster
 running containerd. Designed for clusters where images are large (10GB+) and
 network bandwidth must be carefully managed during image operations.
 
-- **[`image-pull.sh`](https://github.com/Queens-School-of-Computing/Lobot/blob/newcluster/tools/image-pull.sh)** — Pre-pulls images across nodes in controlled batches to avoid saturating the network during helm upgrades
-- **[`image-cleanup.sh`](https://github.com/Queens-School-of-Computing/Lobot/blob/newcluster/tools/image-cleanup.sh)** — Removes old image tags from all nodes while protecting images in active use by running pods
+- **[`image-pull.sh`](https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/image-pull.sh)** — Pre-pulls images across nodes in controlled batches to avoid saturating the network during helm upgrades
+- **[`image-cleanup.sh`](https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/image-cleanup.sh)** — Removes old image tags from all nodes while protecting images in active use by running pods
 
 Both scripts support `--dry-run` mode for safe pre-flight checks, and send HTML
 email notifications on completion via Python smtplib.

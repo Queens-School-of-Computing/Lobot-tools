@@ -139,7 +139,7 @@ def get_hardware_info():
 
 
 CONFIG_YAML_BK_URL = (
-    'https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/newcluster/config.yaml.bk'
+    'https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/config.yaml.bk'
 )
 
 

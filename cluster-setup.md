@@ -1,6 +1,6 @@
 # Cluster Setup Guide
 
-![](https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/newcluster/assets/images/newsetupbanner.jpg)
+![](https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/assets/images/newsetupbanner.jpg)
 
 Aaron Visser — Created: April 2025 (original documentation ~2021)\
 Updated: March 2026 — two-file config, apply-config.sh, Lobot tools section
@@ -352,7 +352,7 @@ The cluster config and the tools are in two separate repos. Clone both — the t
 cd /opt
 
 # Clone the cluster-config repo
-sudo git clone https://github.com/Queens-School-of-Computing/Lobot.git -b newcluster
+sudo git clone https://github.com/Queens-School-of-Computing/Lobot.git -b main
 sudo chown -R croot:croot /opt/Lobot
 
 # Clone the tools repo into tools/ inside the cluster-config repo
@@ -555,7 +555,7 @@ script **directly on the new node** to auto-detect CPU, RAM, and GPU and generat
 
 ```bash
 # Download and run on the new node
-curl -O https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/newcluster/tools/generate-resource-page.py
+curl -O https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/tools/generate-resource-page.py
 python3 generate-resource-page.py --lab <labname>
 ```
 

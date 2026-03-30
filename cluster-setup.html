@@ -1,4 +1,4 @@
-<h2><img class="alignnone size-full" src="https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/newcluster/assets/images/newsetupbanner.jpg" alt="" width="1536" height="1024" /></h2>
+<h2><img class="alignnone size-full" src="https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/assets/images/newsetupbanner.jpg" alt="" width="1536" height="1024" /></h2>
 <p>Aaron Visser — Created: April 2025 (original documentation ~2021)<br />
 Updated: March 2026 — two-file config, apply-config.sh, Lobot tools section</p>
 <p>Also see: <a href="https://newsocdocs.cs.queensu.ca/socdocs.wp/helpful-kubernetes-cluster-lobot-commands/" target="_blank" rel="noopener">Helpful Kubernetes Cluster / Lobot Commands</a></p>
@@ -235,7 +235,7 @@ helm install --wait --generate-name \
 <pre><code>cd /opt
 
 # Clone the cluster-config repo
-sudo git clone https://github.com/Queens-School-of-Computing/Lobot.git -b newcluster
+sudo git clone https://github.com/Queens-School-of-Computing/Lobot.git -b main
 sudo chown -R croot:croot /opt/Lobot
 
 # Clone the tools repo into tools/ inside the cluster-config repo
@@ -282,7 +282,7 @@ bash tools/apply-config.sh
 # Review both output files
 # config.yaml      — base config with secrets
 # config-env.yaml  — env overrides for this cluster</code></pre>
-<blockquote><p>For all future config updates, just run <code>bash /opt/Lobot/tools/apply-config.sh</code>. See <a href="https://github.com/Queens-School-of-Computing/Lobot/blob/newcluster/tools/apply-config.md" target="_blank" rel="noopener">apply-config.md</a> for full documentation.</p></blockquote>
+<blockquote><p>For all future config updates, just run <code>bash /opt/Lobot/tools/apply-config.sh</code>. See <a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/apply-config.md" target="_blank" rel="noopener">apply-config.md</a> for full documentation.</p></blockquote>
 <hr />
 <h2>Step 17 — Longhorn</h2>
 <pre><code>apt-get install open-iscsi
@@ -361,7 +361,7 @@ export GROUP_ROLES_URL=$(python3 -c \
 
 ./sync_groups.sh --dry-run --verbose   # preview
 ./sync_groups.sh                        # apply</code></pre>
-<p>See <a href="https://github.com/Queens-School-of-Computing/Lobot/blob/newcluster/tools/sync_groups.md" target="_blank" rel="noopener">sync_groups.md</a> for full documentation.</p>
+<p>See <a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/sync_groups.md" target="_blank" rel="noopener">sync_groups.md</a> for full documentation.</p>
 <h3>Pre-pull the singleuser image</h3>
 <p>Large images (10GB+) should be pre-pulled to all nodes before deploying with the full config to avoid Helm timeout or pod scheduling delays.</p>
 <pre><code>IMAGE_TAG=$(python3 -c \
@@ -371,11 +371,11 @@ IMAGE="queensschoolofcomputingdocker/gpu-jupyter-latest:${IMAGE_TAG}"
 cd /opt/Lobot/tools
 ./image-pull.sh -i "$IMAGE" --dry-run   # check which nodes need the pull
 ./image-pull.sh -i "$IMAGE"             # pull to all nodes</code></pre>
-<p>See <a href="https://github.com/Queens-School-of-Computing/Lobot/blob/newcluster/tools/IMAGE-MANAGEMENT.md" target="_blank" rel="noopener">IMAGE-MANAGEMENT.md</a> for full documentation.</p>
+<p>See <a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/IMAGE-MANAGEMENT.md" target="_blank" rel="noopener">IMAGE-MANAGEMENT.md</a> for full documentation.</p>
 <h3>Generate the spawn form for the new node</h3>
 <p>Each lab/node needs a spawn form HTML file in <code>assets/html/&lt;labname&gt;.html</code>. Run this script <strong>directly on the new node</strong> to auto-detect CPU, RAM, and GPU and generate the file.</p>
 <pre><code># Download and run on the new node
-curl -O https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/newcluster/tools/generate-resource-page.py
+curl -O https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/tools/generate-resource-page.py
 python3 generate-resource-page.py --lab &lt;labname&gt;</code></pre>
 <p>This writes <code>&lt;labname&gt;.html</code> in the current directory. Copy it to <code>assets/html/</code> in the repo, commit, and push. The <code>generate-runtime-config</code> workflow will pick up the new limits automatically on the next run.</p>
 <blockquote><p>The image tag is read from <code>/opt/Lobot/config-env.yaml</code> if present, falling back to <code>config.yaml.bk</code> fetched directly from GitHub. No manual update should be needed.</p></blockquote>
@@ -423,7 +423,7 @@ ln -sf /opt/Lobot/tools/lobot-tui.sh /usr/local/bin/lobot-tui
 
 # Launch
 bash /opt/Lobot/tools/lobot-tui.sh</code></pre>
-<p>See <a href="https://github.com/Queens-School-of-Computing/Lobot/blob/newcluster/tools/lobot-tui.md" target="_blank" rel="noopener">lobot-tui.md</a> for full documentation.</p>
+<p>See <a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/lobot-tui.md" target="_blank" rel="noopener">lobot-tui.md</a> for full documentation.</p>
 <h3>Environment variables</h3>
 <p><code>lobot-tui</code> and <code>lobot-collector</code> read two optional environment variables to locate the cluster-config repo and the tools directory.</p>
 <table>

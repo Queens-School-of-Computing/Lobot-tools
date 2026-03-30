@@ -876,7 +876,7 @@ python3 -m lobot_tui</code></pre>
   -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-20260313 \
   -e lobot-dev.cs.queensu.ca --yes</code></pre>
 <h3>[3] apply-config</h3>
-<p>Pulls the JupyterHub Helm config template from the <code>newcluster</code> GitHub branch, substitutes secrets from the existing config, and writes the output files. Runs <code>bash apply-config.sh</code> on the control plane.</p>
+<p>Pulls the JupyterHub Helm config template from the <code>main</code> GitHub branch, substitutes secrets from the existing config, and writes the output files. Runs <code>bash apply-config.sh</code> on the control plane.</p>
 <p><strong>What it does:</strong></p>
 <ul>
 <li>Pulls config from GitHub (overwrites local state)</li>
@@ -940,7 +940,7 @@ python3 -m lobot_tui</code></pre>
 <p>When implemented, save will write the two field values back to <code>announcement.yaml</code> and run:</p>
 <pre><code>git add /opt/Lobot/announcement.yaml
 git commit -m "chore: update announcement via lobot-tui"
-git push origin newcluster</code></pre>
+git push origin main</code></pre>
 <p>The JupyterHub announcement banner updates within seconds as the hub fetches the new YAML from GitHub.</p>
 <h3>[7] LV Tool</h3>
 <p>Opens the <strong>LV Tool screen</strong> — a PVC picker for inspecting and expanding Longhorn volumes when the associated pod is offline or you want to work directly with a PVC rather than a pod.</p>
@@ -1044,7 +1044,7 @@ git push origin newcluster</code></pre>
 [2026-03-15 14:22:10] [exit 0] $ kubectl cordon newcluster-gpu1
 [2026-03-15 14:22:15] [exit 0] $ kubectl logs -f jupyter-alice -n jhub --tail 500
 [2026-03-15 14:22:30] [exit 0] $ bash image-pull.sh -i queensschoolofcomputingdocker/gpu-jupyter-latest -b 3 -t 1200 --latest --yes
-[2026-03-15 14:22:35] [exit 0] $ git push origin newcluster</code></pre>
+[2026-03-15 14:22:35] [exit 0] $ git push origin main</code></pre>
 <p><strong>Commands logged:</strong></p>
 <table>
 <thead>
