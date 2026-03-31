@@ -1,6 +1,5 @@
 """HtmlOutputScreen: read-only viewer for a generated resource HTML file."""
 
-import socket
 from pathlib import Path
 
 from textual.app import ComposeResult
@@ -17,6 +16,7 @@ class HtmlOutputScreen(Screen):
     BINDINGS = [
         Binding("q", "dismiss", "Close"),
         Binding("escape", "dismiss", "Close"),
+        Binding("t", "terminal_view", "View in terminal", priority=True),
     ]
 
     def __init__(self, path: str) -> None:
@@ -24,17 +24,12 @@ class HtmlOutputScreen(Screen):
         self._path = path
 
     def compose(self) -> ComposeResult:
-        hostname = socket.gethostname()
         yield TricolourStripe("▄")
         yield Label(
-            f"[bold cyan]Resource HTML[/]  [dim](q) close[/]",
+            f"[bold cyan]Resource HTML[/]  [dim]{self._path}[/]  "
+            f"[dim]  (t) view in terminal for copy    (q) close[/]",
             markup=True,
             id="html-title",
-        )
-        yield Label(
-            f"[dim]To copy to your local clipboard:[/]\n"
-            f"  ssh {hostname} cat {self._path} | pbcopy",
-            id="html-copy-hint",
         )
         try:
             content = Path(self._path).read_text()
@@ -43,6 +38,15 @@ class HtmlOutputScreen(Screen):
         yield TextArea(content, id="html-content", read_only=True)
 
     def on_mount(self) -> None:
-        ta = self.query_one("#html-content", TextArea)
-        ta.focus()
-        ta.select_all()
+        self.query_one("#html-content", TextArea).focus()
+
+    def action_terminal_view(self) -> None:
+        try:
+            content = Path(self._path).read_text()
+        except Exception as exc:
+            self.notify(f"Error reading file: {exc}", severity="error", timeout=4)
+            return
+        with self.app.suspend():
+            print(content)
+            print("\033[2m--- Press Enter to return to lobot-tui ---\033[0m", flush=True)
+            input()
