@@ -5,7 +5,7 @@ from pathlib import Path
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Label, RichLog
+from textual.widgets import Label, TextArea
 
 from ..widgets.tricolour_stripe import TricolourStripe
 
@@ -26,16 +26,17 @@ class HtmlOutputScreen(Screen):
         yield TricolourStripe("▄")
         yield Label(
             f"[bold cyan]Resource HTML[/]  [dim]{self._path}[/]  "
-            f"[dim]  click+drag to select, ctrl+c to copy    (q) close[/]",
+            f"[dim]  text pre-selected — ctrl+c to copy    (q) close[/]",
             markup=True,
             id="html-title",
         )
-        yield RichLog(id="html-content", highlight=False, markup=False, wrap=False)
+        try:
+            content = Path(self._path).read_text()
+        except Exception as exc:
+            content = f"Error reading {self._path}: {exc}"
+        yield TextArea(content, id="html-content", read_only=True)
 
     def on_mount(self) -> None:
-        log = self.query_one("#html-content", RichLog)
-        try:
-            for line in Path(self._path).read_text().splitlines():
-                log.write(line)
-        except Exception as exc:
-            log.write(f"Error reading {self._path}: {exc}")
+        ta = self.query_one("#html-content", TextArea)
+        ta.focus()
+        ta.select_all()
