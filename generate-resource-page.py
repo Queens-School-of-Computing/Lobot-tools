@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Generate a JupyterHub spawn form HTML by reading hardware info directly
-from the local machine.
+"""Generate a JupyterHub spawn form HTML by reading hardware info from a node.
 
-Run this on the node itself, then commit the output to assets/html/.
+Can run locally on the node, or remotely from the control plane via --host.
 
 Usage:
     python3 generate-resource-page.py --lab <labname>
-    python3 generate-resource-page.py --lab <labname> --output /tmp/mylab.html
+    python3 generate-resource-page.py --lab <labname> --host <node>
+    python3 generate-resource-page.py --lab <labname> --host <node> --output /tmp/mylab.html
 
 The script reads:
   - CPU count and model  from /proc/cpuinfo
@@ -45,9 +45,16 @@ def main():
     parser.add_argument(
         '--output', '-o', help='Output path (default: /opt/Lobot/assets/html/<lab>.html)'
     )
+    parser.add_argument(
+        '--host',
+        help='Remote node to read hardware info from via SSH (e.g. user@node). '
+             'Omit to read from the local machine.',
+    )
     args = parser.parse_args()
 
-    info = get_hardware_info()
+    if args.host:
+        print(f"Reading hardware info from {args.host} via SSH...")
+    info = get_hardware_info(args.host)
     image_tag, image_label = get_current_image()
     html = render_html(args.lab, info, image_tag, image_label)
 
@@ -74,6 +81,19 @@ def main():
     print(f"  GPU:  {gpu_str}")
 
 
+def _read_file(host, path):
+    if host:
+        return subprocess.run(['ssh', host, f'cat {path}'], capture_output=True, text=True, check=True).stdout
+    return Path(path).read_text()
+
+
+def _run_cmd(host, cmd):
+    """Run a command locally or via SSH. Returns stdout, raises on failure."""
+    if host:
+        return subprocess.run(['ssh', host] + cmd, capture_output=True, text=True, check=True).stdout
+    return subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+
+
 def _round_gpu_mem(mib):
     """Round raw MiB to the nearest standard GPU VRAM size in GB.
     e.g. 15356 MiB → 16G, 81920 MiB → 80G, 49152 MiB → 48G."""
@@ -82,32 +102,25 @@ def _round_gpu_mem(mib):
     return min(common, key=lambda x: abs(x - gb))
 
 
-def get_hardware_info():
+def get_hardware_info(host=None):
     # --- CPU ---
-    cpuinfo = Path('/proc/cpuinfo').read_text()
+    cpuinfo = _read_file(host, '/proc/cpuinfo')
     cpu_count = cpuinfo.count('processor\t:')
     model_match = re.search(r'^model name\s+:\s+(.+)$', cpuinfo, re.MULTILINE)
     cpu_model = model_match.group(1).strip() if model_match else 'Unknown CPU'
 
     # --- RAM ---
-    meminfo = Path('/proc/meminfo').read_text()
+    meminfo = _read_file(host, '/proc/meminfo')
     mem_match = re.search(r'^MemTotal:\s+(\d+)\s+kB', meminfo, re.MULTILINE)
     ram_gb = int(mem_match.group(1)) // (1024 * 1024) if mem_match else 0
 
     # --- GPU (optional) ---
     gpu_count, gpu_model, gpu_mem_gb = 0, '', None
     try:
-        smi = (
-            subprocess
-            .run(
-                ['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader'],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            .stdout.strip()
-            .splitlines()
-        )
+        smi = _run_cmd(
+            host,
+            ['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader'],
+        ).strip().splitlines()
         gpu_count = len(smi)
         if smi:
             name, mem = smi[0].split(',', 1)
