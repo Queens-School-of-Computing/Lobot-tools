@@ -337,6 +337,17 @@ ActionWizardScreen {
 }
 
 /* ── Node picker modal ── */
+/* ── HTML output screen ── */
+#html-copy-hint {
+    padding: 0 1;
+    color: $text-muted;
+    background: $panel;
+}
+
+HtmlOutputScreen #html-content {
+    height: 1fr;
+}
+
 NodePickerScreen {
     align: center middle;
 }

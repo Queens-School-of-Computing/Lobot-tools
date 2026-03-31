@@ -1,5 +1,6 @@
 """HtmlOutputScreen: read-only viewer for a generated resource HTML file."""
 
+import socket
 from pathlib import Path
 
 from textual.app import ComposeResult
@@ -23,12 +24,17 @@ class HtmlOutputScreen(Screen):
         self._path = path
 
     def compose(self) -> ComposeResult:
+        hostname = socket.gethostname()
         yield TricolourStripe("▄")
         yield Label(
-            f"[bold cyan]Resource HTML[/]  [dim]{self._path}[/]  "
-            f"[dim]  text pre-selected — ctrl+c to copy    (q) close[/]",
+            f"[bold cyan]Resource HTML[/]  [dim](q) close[/]",
             markup=True,
             id="html-title",
+        )
+        yield Label(
+            f"[dim]To copy to your local clipboard:[/]\n"
+            f"  ssh {hostname} cat {self._path} | pbcopy",
+            id="html-copy-hint",
         )
         try:
             content = Path(self._path).read_text()
