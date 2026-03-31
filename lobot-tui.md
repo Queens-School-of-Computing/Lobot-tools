@@ -339,7 +339,6 @@ A 3-row Sparkline widget at the bottom of the resource panel charts the total po
 | Key | Action |
 |-----|--------|
 | `q` | Quit (press twice within 2 seconds to confirm) |
-| `R` | Force-refresh all data immediately |
 | `?` | Help screen (full key binding reference) |
 | `G` | Full guide — opens `lobot-tui.md` in a scrollable viewer with table of contents |
 | `C` | Config viewer — opens `/opt/Lobot/config.yaml` and `config-env.yaml` for review; press `1`/`2` to switch files |
@@ -386,6 +385,7 @@ Focus the node table with `Tab`. The control plane (`lobot-dev.cs.queensu.ca`) i
 | `c` | Cordon node — press twice within 2 seconds to confirm |
 | `u` | Uncordon node — press twice within 2 seconds to confirm |
 | `w` | Drain node — press twice within 2 seconds to confirm |
+| `R` | Generate Resource HTML — opens a wizard to generate the JupyterHub spawn form for the selected node |
 | Click header | Sort by column (click again to reverse) |
 
 > **Disk sub-rows**: nodes with Longhorn data show a `▶` indicator. Press `Space` or `→` to expand — a sub-row appears for each disk showing its mount path, schedulable status (`Sched`/`Disab`), and a per-disk usage bar. Press `←` or `Space` again to collapse. The cursor can navigate through sub-rows; all node operations (`c`, `u`, `w`, `n`) always apply to the parent node regardless of which row is selected.
@@ -432,6 +432,7 @@ The available keys depend on whether the job is still running:
 | `s` | Save full output to `/opt/Lobot/logs/lobot-tui-<name>-<timestamp>.log` |
 | `C` | Open config viewer — shown in footer hint after an `apply-config` job completes |
 | `R` | Restart JupyterHub pod — shown in footer hint after a successful `sync-groups` job |
+| `t` | View generated HTML in the raw terminal — shown in footer hint after a successful `generate-resource-html` job. Suspends the TUI, clears the screen, and prints the HTML so you can select and copy it normally. Press Enter to return. |
 
 ### Config Viewer (`C`)
 
@@ -664,6 +665,34 @@ The screen lists all PVCs across all namespaces in a sortable table showing PVC 
 | `Escape` / `q` | Return to main dashboard |
 
 > This screen is for **offline volumes** (pod stopped or no pod attached). For a running pod, use `i` / `E` directly from the pod table.
+
+---
+
+### `[R]` Generate Resource HTML
+
+Select a worker node in the node table, then press `R` to open the **Generate Resource HTML** wizard. This runs `generate-resource-page.py` on the selected node via SSH, reads its CPU, RAM, and GPU specs, and generates the JupyterHub spawn form HTML for that node.
+
+**Wizard fields:**
+
+| Field | Description |
+|-------|-------------|
+| Lab name | The resource key used in JupyterHub config (defaults to the node short name) |
+| SSH user | The user to connect as (defaults to `$USER` on the control plane) |
+
+The node hostname is resolved automatically: if the node name contains no dots it is expanded to `<name>.cs.queensu.ca`.
+
+**SSH key auth required.** If the control plane does not yet have a key authorised on the target node:
+
+```bash
+ssh-keygen -t ed25519          # skip if a key already exists
+ssh-copy-id <user>@<node>.cs.queensu.ca
+```
+
+**Output:** the HTML is written to `/tmp/lobot-resource-<labname>.html` on the control plane. The jobs panel shows the hardware summary (CPU model, core options, RAM options, GPU). When the job completes, the footer shows `[t] view HTML in terminal`.
+
+Press `t` to suspend the TUI, clear the screen, and print the raw HTML — select and copy it normally in your terminal, then press **Enter** to return to lobot-tui.
+
+Copy the HTML to `assets/html/<labname>.html` in the Lobot-tools repo, commit, and push. The `generate-runtime-config` workflow picks up the new resource limits automatically.
 
 ---
 

@@ -312,10 +312,6 @@ python3 -m lobot_tui</code></pre>
 <td>Quit (press twice within 2 seconds to confirm)</td>
 </tr>
 <tr>
-<td><code>R</code></td>
-<td>Force-refresh all data immediately</td>
-</tr>
-<tr>
 <td><code>Tab</code></td>
 <td>Cycle focus between panels: Resources → Nodes → Pods</td>
 </tr>
@@ -454,6 +450,10 @@ python3 -m lobot_tui</code></pre>
 <td>Drain node — press twice within 2 seconds to confirm</td>
 </tr>
 <tr>
+<td><code>R</code></td>
+<td>Generate Resource HTML — opens a wizard to generate the JupyterHub spawn form for the selected node</td>
+</tr>
+<tr>
 <td>Click header</td>
 <td>Sort by column (click again to reverse)</td>
 </tr>
@@ -535,6 +535,10 @@ python3 -m lobot_tui</code></pre>
 <tr>
 <td><code>R</code></td>
 <td>Restart JupyterHub pod — shown in footer hint after a successful <code>sync-groups</code> job</td>
+</tr>
+<tr>
+<td><code>t</code></td>
+<td>View generated HTML in the raw terminal — shown in footer hint after a successful <code>generate-resource-html</code> job. Suspends the TUI, clears the screen, and prints the HTML so you can select and copy it normally. Press Enter to return.</td>
 </tr>
 </tbody>
 </table>
@@ -968,6 +972,24 @@ git push origin main</code></pre>
 </tbody>
 </table>
 <p>This screen is for <strong>offline volumes</strong> (pod stopped or no pod attached). For a running pod, use <code>i</code> / <code>E</code> directly from the pod table.</p>
+<hr />
+<h3>[R] Generate Resource HTML</h3>
+<p>Select a worker node in the node table, then press <code>R</code> to open the <strong>Generate Resource HTML</strong> wizard. This runs <code>generate-resource-page.py</code> on the selected node via SSH, reads its CPU, RAM, and GPU specs, and generates the JupyterHub spawn form HTML for that node.</p>
+<p><strong>Wizard fields:</strong></p>
+<table>
+<thead><tr><th>Field</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>Lab name</td><td>The resource key used in JupyterHub config (defaults to the node short name)</td></tr>
+<tr><td>SSH user</td><td>The user to connect as (defaults to <code>$USER</code> on the control plane)</td></tr>
+</tbody>
+</table>
+<p>The node hostname is resolved automatically: if the node name contains no dots it is expanded to <code>&lt;name&gt;.cs.queensu.ca</code>.</p>
+<p><strong>SSH key auth required.</strong> If the control plane does not yet have a key authorised on the target node:</p>
+<pre><code>ssh-keygen -t ed25519          # skip if a key already exists
+ssh-copy-id &lt;user&gt;@&lt;node&gt;.cs.queensu.ca</code></pre>
+<p><strong>Output:</strong> the HTML is written to <code>/tmp/lobot-resource-&lt;labname&gt;.html</code> on the control plane. The jobs panel shows the hardware summary (CPU model, core options, RAM options, GPU). When the job completes, the footer shows <code>[t] view HTML in terminal</code>.</p>
+<p>Press <code>t</code> to suspend the TUI, clear the screen, and print the raw HTML — select and copy it normally in your terminal, then press <strong>Enter</strong> to return to lobot-tui.</p>
+<p>Copy the HTML to <code>assets/html/&lt;labname&gt;.html</code> in the Lobot-tools repo, commit, and push. The <code>generate-runtime-config</code> workflow picks up the new resource limits automatically.</p>
 <hr />
 <h2>Background Job System</h2>
 <p>Tool actions 1–5 run as background jobs so the main dashboard remains usable during long operations like image-pull.</p>
