@@ -58,6 +58,10 @@ THEME_FILE = Path.home() / ".config" / "lobot-tui" / "theme.txt"
 # All commands run via the TUI are appended here (rotates daily).
 LOG_DIR = REPO_DIR / "logs"
 
+# ── Node domain: appended to bare hostnames for SSH access ───────────────────
+# Override with LOBOT_NODE_DOMAIN env var if your cluster uses a different domain.
+NODE_DOMAIN = os.environ.get("LOBOT_NODE_DOMAIN", "cs.queensu.ca")
+
 # ── Safety lock: when True, tool actions 1-5 are restricted to dry-run only ───
 # Set to False when ready to run tools live.
 TOOLS_LOCKED = False

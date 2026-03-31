@@ -26,6 +26,7 @@ _ROW2_LEFT = [
     ("[bold cyan](c)[/] cordon", "hint-node", "c"),
     ("[bold cyan](u)[/] uncordon", "hint-node", "u"),
     ("[bold cyan](w)[/] drain", "hint-node", "w"),
+    ("[bold cyan](R)[/] resource html", "hint-node", "R"),
 ]
 _ROW1_RIGHT = [
     ("[bold dim]TOOLS[/]", "hint-prefix", None),

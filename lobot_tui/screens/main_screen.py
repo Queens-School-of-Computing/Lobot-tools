@@ -42,6 +42,7 @@ from .command_preview_screen import CommandPreviewScreen
 from .config_viewer_screen import ConfigViewerScreen
 from .console_screen import ConsoleScreen
 from .exec_screen import ExecScreen
+from .generate_resource_screen import GenerateResourceScreen
 from .guide_screen import GuideScreen
 from .help_screen import HelpScreen
 from .jobs_screen import JobsScreen
@@ -109,7 +110,7 @@ class MainScreen(Screen):
 
     BINDINGS = [
         ("q", "quit_app", "Quit"),
-        ("R", "force_refresh", "Refresh"),
+        ("R", "generate_resource", "Resource HTML"),
         ("question_mark", "show_help", "Help"),
         ("G", "show_guide", "Guide"),
         ("C", "show_config", "Config"),
@@ -354,8 +355,29 @@ class MainScreen(Screen):
     def action_quit_app(self) -> None:
         self._require_confirm("q", "quit lobot-tui", lambda: self.app.exit())
 
-    def action_force_refresh(self) -> None:
-        asyncio.ensure_future(self._collector.force_refresh())
+    def action_generate_resource(self) -> None:
+        node = self._selected_node()
+        if node is None or node.is_control_plane:
+            self.notify("Select a worker node first.", severity="warning", timeout=3)
+            return
+        self.app.push_screen(
+            GenerateResourceScreen(node.name),
+            callback=self._on_generate_resource_result,
+        )
+
+    def _on_generate_resource_result(self, argv: list | None) -> None:
+        if not argv:
+            return
+        if self.app.job_manager.is_running:
+            self.notify(
+                "A background job is already running — press [b] to view it.",
+                title="Job in progress",
+                severity="warning",
+                timeout=4.0,
+            )
+            return
+        self.app.job_manager.start(self.app, "generate-resource-html", argv, str(TOOLS_DIR))
+        self.app.push_screen(JobsScreen())
 
     def action_show_help(self) -> None:
         self.app.push_screen(HelpScreen())
@@ -649,6 +671,7 @@ class MainScreen(Screen):
             "c": self.action_node_cordon,
             "u": self.action_node_uncordon,
             "w": self.action_node_drain,
+            "R": self.action_generate_resource,
             "?": self.action_show_help,
             "q": self.action_quit_app,
         }

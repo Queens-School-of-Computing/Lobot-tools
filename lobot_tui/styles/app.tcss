@@ -283,6 +283,14 @@ ActionWizardScreen {
     margin-top: 1;
 }
 
+.wizard-ssh-info {
+    margin-top: 1;
+    padding: 1 2;
+    background: $panel;
+    color: $text-muted;
+    border: solid $panel-border;
+}
+
 .wizard-input {
     background: $panel;
     border: solid $panel-border;
