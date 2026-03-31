@@ -550,21 +550,31 @@ See [IMAGE-MANAGEMENT.md](IMAGE-MANAGEMENT.md) for full documentation.
 
 ### Generate the spawn form for the new node
 
-Each lab/node needs a spawn form HTML file in `assets/html/<labname>.html`. Run this
-script **directly on the new node** to auto-detect CPU, RAM, and GPU and generate the file.
+Each lab/node needs a spawn form HTML file in `assets/html/<labname>.html`. The script
+`generate-resource-page.py` (in the Lobot-tools repo, deployed to `/opt/Lobot/tools/`) reads
+CPU, RAM, and GPU info and generates the file.
+
+**From the control plane (recommended)** — use `--host` to read hardware info remotely via SSH
+and `--stdout` to print the HTML directly to the terminal for review:
 
 ```bash
-# Download and run on the new node
-curl -O https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/tools/generate-resource-page.py
-python3 generate-resource-page.py --lab <labname>
+python3 /opt/Lobot/tools/generate-resource-page.py --lab <labname> --host <node>
 ```
 
-This writes `<labname>.html` in the current directory. Copy it to `assets/html/` in the
-repo, commit, and push. The `generate-runtime-config` workflow will pick up the new limits
-automatically on the next run.
+To preview without writing a file:
+
+```bash
+python3 /opt/Lobot/tools/generate-resource-page.py --lab <labname> --host <node> --stdout
+```
+
+Copy the output to `assets/html/<labname>.html` in the repo, commit, and push. The
+`generate-runtime-config` workflow will pick up the new limits automatically on the next run.
 
 > **Note:** The image tag is read from `/opt/Lobot/config-env.yaml` if present, falling back
 > to `config.yaml.bk` fetched directly from GitHub. No manual update should be needed.
+>
+> **SSH key auth required:** Ensure the control plane's SSH public key is authorised on the
+> target node (`ssh-copy-id <node>`) before using `--host`.
 
 ### lobot-collector (cluster status service)
 

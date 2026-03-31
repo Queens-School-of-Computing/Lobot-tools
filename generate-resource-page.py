@@ -46,6 +46,9 @@ def main():
         '--output', '-o', help='Output path (default: /opt/Lobot/assets/html/<lab>.html)'
     )
     parser.add_argument(
+        '--stdout', action='store_true', help='Print HTML to stdout instead of writing a file'
+    )
+    parser.add_argument(
         '--host',
         help='Remote node to read hardware info from via SSH (e.g. user@node). '
              'Omit to read from the local machine.',
@@ -53,10 +56,14 @@ def main():
     args = parser.parse_args()
 
     if args.host:
-        print(f"Reading hardware info from {args.host} via SSH...")
+        print(f"Reading hardware info from {args.host} via SSH...", file=sys.stderr)
     info = get_hardware_info(args.host)
     image_tag, image_label = get_current_image()
     html = render_html(args.lab, info, image_tag, image_label)
+
+    if args.stdout:
+        print(html)
+        return
 
     out_path = Path(args.output) if args.output else ASSETS_HTML / f'{args.lab}.html'
     if out_path.exists():

@@ -373,12 +373,14 @@ cd /opt/Lobot/tools
 ./image-pull.sh -i "$IMAGE"             # pull to all nodes</code></pre>
 <p>See <a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/IMAGE-MANAGEMENT.md" target="_blank" rel="noopener">IMAGE-MANAGEMENT.md</a> for full documentation.</p>
 <h3>Generate the spawn form for the new node</h3>
-<p>Each lab/node needs a spawn form HTML file in <code>assets/html/&lt;labname&gt;.html</code>. Run this script <strong>directly on the new node</strong> to auto-detect CPU, RAM, and GPU and generate the file.</p>
-<pre><code># Download and run on the new node
-curl -O https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/tools/generate-resource-page.py
-python3 generate-resource-page.py --lab &lt;labname&gt;</code></pre>
-<p>This writes <code>&lt;labname&gt;.html</code> in the current directory. Copy it to <code>assets/html/</code> in the repo, commit, and push. The <code>generate-runtime-config</code> workflow will pick up the new limits automatically on the next run.</p>
-<blockquote><p>The image tag is read from <code>/opt/Lobot/config-env.yaml</code> if present, falling back to <code>config.yaml.bk</code> fetched directly from GitHub. No manual update should be needed.</p></blockquote>
+<p>Each lab/node needs a spawn form HTML file in <code>assets/html/&lt;labname&gt;.html</code>. The script <code>generate-resource-page.py</code> (in the Lobot-tools repo, deployed to <code>/opt/Lobot/tools/</code>) reads CPU, RAM, and GPU info and generates the file.</p>
+<p><strong>From the control plane (recommended)</strong> — use <code>--host</code> to read hardware info remotely via SSH:</p>
+<pre><code>python3 /opt/Lobot/tools/generate-resource-page.py --lab &lt;labname&gt; --host &lt;node&gt;</code></pre>
+<p>To preview without writing a file, add <code>--stdout</code>:</p>
+<pre><code>python3 /opt/Lobot/tools/generate-resource-page.py --lab &lt;labname&gt; --host &lt;node&gt; --stdout</code></pre>
+<p>Copy the output to <code>assets/html/&lt;labname&gt;.html</code> in the repo, commit, and push. The <code>generate-runtime-config</code> workflow will pick up the new limits automatically on the next run.</p>
+<blockquote><p><strong>Note:</strong> The image tag is read from <code>/opt/Lobot/config-env.yaml</code> if present, falling back to <code>config.yaml.bk</code> fetched directly from GitHub. No manual update should be needed.</p>
+<p><strong>SSH key auth required:</strong> Ensure the control plane's SSH public key is authorised on the target node (<code>ssh-copy-id &lt;node&gt;</code>) before using <code>--host</code>.</p></blockquote>
 <h3>lobot-collector (cluster status service)</h3>
 <p>The lobot-collector service polls kubectl once on behalf of all consumers:</p>
 <ul>
