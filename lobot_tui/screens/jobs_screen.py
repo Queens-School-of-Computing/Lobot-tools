@@ -19,12 +19,17 @@ from ..widgets.tricolour_stripe import TricolourStripe
 class JobsScreen(Screen):
     """Shows live streaming output of the current background job."""
 
+    def __init__(self, output_path: str | None = None) -> None:
+        super().__init__()
+        self._output_path = output_path  # set for generate-resource-html jobs
+
     BINDINGS = [
         Binding("b", "go_back", "Background/back", priority=True),
         Binding("k", "kill_job", "Kill job", priority=True),
         Binding("s", "save_output", "Save"),
         Binding("C", "view_config", "View config", show=False),
         Binding("R", "restart_hub", "Restart hub", show=False),
+        Binding("t", "view_html_in_terminal", "View HTML in terminal", show=False),
         # escape and q are handled in on_key so they only work when the job is done
     ]
 
@@ -91,7 +96,8 @@ class JobsScreen(Screen):
         elif job.status == "done":
             config_hint = r"  \[C] view config" if job.title == "apply-config" else ""
             hub_hint = r"  \[R] restart hub" if job.title == "sync-groups" else ""
-            footer.update(rf"[green]Completed (exit 0)[/]  [dim]Esc/q/\[b] close  \[s] save{config_hint}{hub_hint}[/]")
+            html_hint = r"  \[t] view HTML in terminal" if self._output_path else ""
+            footer.update(rf"[green]Completed (exit 0)[/]  [dim]Esc/q/\[b] close  \[s] save{config_hint}{hub_hint}{html_hint}[/]")
         else:
             rc = job.returncode if job.returncode is not None else "?"
             config_hint = r"  \[C] view config" if job.title == "apply-config" else ""
@@ -193,6 +199,23 @@ class JobsScreen(Screen):
             ),
             _on_confirm,
         )
+
+    def action_view_html_in_terminal(self) -> None:
+        """Suspend Textual, print the HTML file to the raw terminal, wait for Enter."""
+        job = self.app.job_manager.current_job
+        if not self._output_path or job is None or job.status != "done":
+            return
+        from pathlib import Path
+        try:
+            content = Path(self._output_path).read_text()
+        except Exception as exc:
+            self.notify(f"Error reading file: {exc}", severity="error", timeout=4)
+            return
+        with self.app.suspend():
+            print("\033[2J\033[H", end="", flush=True)  # clear screen
+            print(content)
+            print("\033[2m--- Press Enter to return to lobot-tui ---\033[0m", flush=True)
+            input()
 
     def action_save_output(self) -> None:
         from datetime import datetime as _dt
