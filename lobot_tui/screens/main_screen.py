@@ -44,6 +44,7 @@ from .console_screen import ConsoleScreen
 from .exec_screen import ExecScreen
 from .generate_resource_screen import GenerateResourceScreen
 from .guide_screen import GuideScreen
+from .html_output_screen import HtmlOutputScreen
 from .help_screen import HelpScreen
 from .jobs_screen import JobsScreen
 from .logs_screen import LogsScreen
@@ -152,6 +153,7 @@ class MainScreen(Screen):
         self._namespaces: list[str] = _NAMESPACES_DEFAULT
         self._pending_key: str | None = None
         self._pending_timer = None
+        self._pending_html_path: str | None = None
         self._ns_filters: dict[str, str] = _load_ns_filters()
         self._last_cluster_state = None
 
@@ -365,9 +367,10 @@ class MainScreen(Screen):
             callback=self._on_generate_resource_result,
         )
 
-    def _on_generate_resource_result(self, argv: list | None) -> None:
-        if not argv:
+    def _on_generate_resource_result(self, result: tuple | None) -> None:
+        if not result:
             return
+        argv, output_path = result
         if self.app.job_manager.is_running:
             self.notify(
                 "A background job is already running — press [b] to view it.",
@@ -376,6 +379,7 @@ class MainScreen(Screen):
                 timeout=4.0,
             )
             return
+        self._pending_html_path = output_path
         self.app.job_manager.start(self.app, "generate-resource-html", argv, str(TOOLS_DIR))
         self.app.push_screen(JobsScreen())
 
@@ -633,12 +637,18 @@ class MainScreen(Screen):
         except Exception:
             pass
         if job.status == "done":
-            self.notify(
-                rf"{job.title} finished — press \[b] to view output.",
-                title="Job completed",
-                timeout=6.0,
-            )
+            if job.title == "generate-resource-html" and self._pending_html_path:
+                path = self._pending_html_path
+                self._pending_html_path = None
+                self.app.push_screen(HtmlOutputScreen(path))
+            else:
+                self.notify(
+                    rf"{job.title} finished — press \[b] to view output.",
+                    title="Job completed",
+                    timeout=6.0,
+                )
         else:
+            self._pending_html_path = None
             rc = job.returncode if job.returncode is not None else "?"
             self.notify(
                 rf"{job.title} failed (exit {rc}) — press \[b] to view output.",

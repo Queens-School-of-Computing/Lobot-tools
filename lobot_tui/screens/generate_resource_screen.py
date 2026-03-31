@@ -91,11 +91,13 @@ class GenerateResourceScreen(ModalScreen):
             return
 
         host = f"{ssh_user}@{self._fqdn}"
+        output_path = f"/tmp/lobot-resource-{labname}.html"
         argv = [
             "python3",
             str(TOOLS_DIR / "generate-resource-page.py"),
             "--lab", labname,
             "--host", host,
-            "--stdout",
+            "--output", output_path,
+            "--yes",
         ]
-        self.dismiss(argv)
+        self.dismiss((argv, output_path))

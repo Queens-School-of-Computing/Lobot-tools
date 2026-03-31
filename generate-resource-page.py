@@ -53,6 +53,9 @@ def main():
         help='Remote node to read hardware info from via SSH (e.g. user@node). '
              'Omit to read from the local machine.',
     )
+    parser.add_argument(
+        '--yes', '-y', action='store_true', help='Overwrite output file without prompting'
+    )
     args = parser.parse_args()
 
     if args.host:
@@ -66,7 +69,7 @@ def main():
         return
 
     out_path = Path(args.output) if args.output else ASSETS_HTML / f'{args.lab}.html'
-    if out_path.exists():
+    if out_path.exists() and not args.yes:
         print(f"WARNING: {out_path} already exists.")
         print("Overwrite? [y/N] ", end='', flush=True)
         if input().strip().lower() != 'y':
@@ -88,16 +91,29 @@ def main():
     print(f"  GPU:  {gpu_str}")
 
 
+_SSH_OPTS = [
+    '-o', 'BatchMode=yes',           # fail immediately if interactive input needed
+    '-o', 'ConnectTimeout=10',       # fail after 10 s if unreachable
+    '-o', 'StrictHostKeyChecking=accept-new',  # auto-accept new keys; reject changed ones
+]
+
+
 def _read_file(host, path):
     if host:
-        return subprocess.run(['ssh', host, f'cat {path}'], capture_output=True, text=True, check=True).stdout
+        return subprocess.run(
+            ['ssh'] + _SSH_OPTS + [host, f'cat {path}'],
+            capture_output=True, text=True, check=True,
+        ).stdout
     return Path(path).read_text()
 
 
 def _run_cmd(host, cmd):
     """Run a command locally or via SSH. Returns stdout, raises on failure."""
     if host:
-        return subprocess.run(['ssh', host] + cmd, capture_output=True, text=True, check=True).stdout
+        return subprocess.run(
+            ['ssh'] + _SSH_OPTS + [host] + cmd,
+            capture_output=True, text=True, check=True,
+        ).stdout
     return subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
 
 
