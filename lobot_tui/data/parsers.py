@@ -347,15 +347,15 @@ def _merge_nodes_and_pods(partial_nodes: list, pods: list) -> tuple[list, dict]:
                 gpu_total=0,
             )
         s = resources[resource_name]
-        jupyter_cpu = round(node_cpu_user.get(node.name, 0))
-        jupyter_ram = round(node_ram_user.get(node.name, 0), 1)
-        jupyter_gpu = node_gpu_user.get(node.name, 0)
+        user_cpu = round(node_cpu_user.get(node.name, 0))
+        user_ram = round(node_ram_user.get(node.name, 0), 1)
+        user_gpu = node_gpu_user.get(node.name, 0)
         s.cpu_total += node.cpu_allocatable
-        s.cpu_free += max(0, node.cpu_allocatable - jupyter_cpu)
+        s.cpu_free += max(0, node.cpu_allocatable - user_cpu)
         s.ram_total_gb += node.ram_allocatable_gb
-        s.ram_free_gb += max(0.0, node.ram_allocatable_gb - jupyter_ram)
+        s.ram_free_gb += max(0.0, node.ram_allocatable_gb - user_ram)
         s.gpu_total += node.gpu_allocatable
-        s.gpu_free += max(0, node.gpu_allocatable - jupyter_gpu)
+        s.gpu_free += max(0, node.gpu_allocatable - user_gpu)
 
     return nodes, resources
 
