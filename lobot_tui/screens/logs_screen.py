@@ -14,10 +14,10 @@ from ..data import command_log
 from ..data.models import PodInfo
 from ..widgets.tricolour_stripe import TricolourStripe
 
-_FOOTER_LIVE = r"[dim]Streaming — \[Esc/q] back  \[s] save  (scroll up to pause)[/]"
-_FOOTER_PAUSED = r"[yellow]⏸ Paused — \[l] resume stream  \[s] save  \[Esc/q] back[/]"
-_FOOTER_ENDED = r"[dim]Stream ended — \[Esc/q] back  \[s] save[/]"
-_FOOTER_ENDED_PAUSED = r"[dim]Stream ended (was paused) — \[Esc/q] back  \[s] save[/]"
+_FOOTER_LIVE = r"[dim]Streaming — \[Esc/q] back  \[s] save  \[t] terminal  (scroll up to pause)[/]"
+_FOOTER_PAUSED = r"[yellow]⏸ Paused — \[l] resume stream  \[s] save  \[t] terminal  \[Esc/q] back[/]"
+_FOOTER_ENDED = r"[dim]Stream ended — \[Esc/q] back  \[s] save  \[t] terminal[/]"
+_FOOTER_ENDED_PAUSED = r"[dim]Stream ended (was paused) — \[Esc/q] back  \[s] save  \[t] terminal[/]"
 
 
 class LogsScreen(Screen):
@@ -29,6 +29,7 @@ class LogsScreen(Screen):
         Binding("l", "resume_stream", "Resume stream"),
         Binding("up", "scroll_up_key", show=False, priority=True),
         Binding("pageup", "scroll_pageup_key", show=False, priority=True),
+        Binding("t", "terminal_view", "View in terminal", priority=True),
         ("s", "save_log", "Save"),
     ]
 
@@ -147,12 +148,20 @@ class LogsScreen(Screen):
             _FOOTER_ENDED if self._stream_done else _FOOTER_LIVE
         )
 
-    # ── Navigation / save ──────────────────────────────────────────────────
+    # ── Navigation / save / terminal ──────────────────────────────────────
 
     def action_go_back(self) -> None:
         if self._proc and self._proc.returncode is None:
             self._proc.terminate()
         self.app.pop_screen()
+
+    def action_terminal_view(self) -> None:
+        if not self._log_lines:
+            return
+        with self.app.suspend():
+            print("\n".join(self._log_lines))
+            print("\033[2m--- Press Enter to return to lobot-tui ---\033[0m", flush=True)
+            input()
 
     def action_save_log(self) -> None:
         if not self._log_lines:

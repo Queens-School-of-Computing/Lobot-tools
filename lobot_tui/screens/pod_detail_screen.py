@@ -19,17 +19,19 @@ class PodDetailScreen(Screen):
     BINDINGS = [
         Binding("escape", "go_back", "Back", priority=True),
         Binding("q", "go_back", "Back", priority=True),
+        Binding("t", "terminal_view", "View in terminal", priority=True),
     ]
 
     def __init__(self, pod: PodInfo) -> None:
         super().__init__()
         self._pod = pod
+        self._lines: list[str] = []
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="screen-header"):
             yield Label(
                 f" [bold cyan]DESCRIBE[/]  {self._pod.name}  "
-                f"ns:{self._pod.namespace}  [dim][Esc/q] back[/]",
+                rf"ns:{self._pod.namespace}  [dim]\[Esc/q] back  \[t] terminal[/]",
                 id="screen-header-main",
                 markup=True,
             )
@@ -46,7 +48,6 @@ class PodDetailScreen(Screen):
         footer = self.query_one("#screen-footer", Label)
 
         cmd = ["kubectl", "describe", "pod", self._pod.name, "-n", self._pod.namespace]
-        lines: list[str] = []
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -55,15 +56,23 @@ class PodDetailScreen(Screen):
             )
             stdout, _ = await proc.communicate()
             text = stdout.decode(errors="replace")
-            lines = text.splitlines()
-            for line in lines:
+            self._lines = text.splitlines()
+            for line in self._lines:
                 log.write(line)
             command_log.record(" ".join(cmd), [], proc.returncode)
-            footer.update(f"[dim]{self._pod.name} — [Esc/q] back[/]")
+            footer.update(rf"[dim]{self._pod.name} — \[Esc/q] back  \[t] terminal[/]")
         except Exception as e:
             command_log.record(" ".join(cmd), [], None)
             log.write(f"Error: {e}")
             footer.update("[red]Error loading describe output[/]")
+
+    def action_terminal_view(self) -> None:
+        if not self._lines:
+            return
+        with self.app.suspend():
+            print("\n".join(self._lines))
+            print("\033[2m--- Press Enter to return to lobot-tui ---\033[0m", flush=True)
+            input()
 
     def action_go_back(self) -> None:
         self.app.pop_screen()
