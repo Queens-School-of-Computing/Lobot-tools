@@ -118,7 +118,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  storageClassName: longhorn
+  storageClassName: caslab-retain-r1
 ---
 # ── MongoDB Deployment ─────────────────────────────────────────────────────────
 apiVersion: apps/v1
@@ -365,13 +365,29 @@ sudo htpasswd -c /etc/nginx/.htpasswd-chatbot <username>
 
 ---
 
-## Appendix — LibreChat Deployment
+## Appendix — LibreChat + vLLM Deployment
 
 LibreChat is a Vite/React SPA and does not support subpath deployment. It is
 exposed on port 8443 using the dedicated port pattern above. It requires MongoDB
 and several mandatory environment variables.
 
-### Complete manifest (`librechat-deployment.yaml`)
+The full stack is:
+- **MongoDB** — persistent store for chats, users, settings
+- **LibreChat** — web chat UI
+- **vLLM** — local LLM inference server (optional, adds a custom endpoint)
+
+---
+
+### Step 1 — Generate JWT secrets
+
+```bash
+echo "JWT_SECRET=$(openssl rand -hex 32)"
+echo "JWT_REFRESH_SECRET=$(openssl rand -hex 32)"
+```
+
+---
+
+### Step 2 — Create `librechat-deployment.yaml`
 
 ```yaml
 # ── MongoDB PVC ────────────────────────────────────────────────────────────────
@@ -386,7 +402,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  storageClassName: longhorn
+  storageClassName: caslab-retain-r1
 ---
 # ── MongoDB ────────────────────────────────────────────────────────────────────
 apiVersion: apps/v1
@@ -408,15 +424,9 @@ spec:
         lab: lobot_a16
       containers:
       - name: mongodb
-        image: mongo:4.4
+        image: mongo:4.4          # must be 4.4 — 5.0+ requires AVX (not available on this cluster)
         ports:
         - containerPort: 27017
-#        resources:
-#          requests:
-#            cpu: "250m"
-#            memory: "256Mi"
-#          limits:
-#            memory: "1Gi"
         volumeMounts:
         - name: mongo-data
           mountPath: /data/db
@@ -460,24 +470,25 @@ spec:
         image: librechat/librechat:latest
         ports:
         - containerPort: 3080
-        resources:
-#          requests:
-#            cpu: "500m"
-#            memory: "512Mi"
-#          limits:
-#            memory: "2Gi"
-#             nvidia.com/gpu: 1   # uncomment if a GPU is required
         env:
         - name: MONGO_URI
           value: "mongodb://mongodb.librechat.svc.cluster.local:27017/LibreChat"
         - name: JWT_SECRET
-          value: "<generate: openssl rand -hex 32>"
+          value: "<output of openssl rand -hex 32>"
         - name: JWT_REFRESH_SECRET
-          value: "<generate: openssl rand -hex 32>"
+          value: "<output of openssl rand -hex 32>"
         - name: ALLOW_REGISTRATION
-          value: "true"          # set to "false" after creating your admin account
+          value: "true"           # set to "false" after creating your admin account
         - name: OPENAI_API_KEY
-          value: "<your-openai-api-key>"   # enables GPT models in the model selector
+          value: "<your-openai-api-key>"
+        volumeMounts:
+        - name: librechat-config
+          mountPath: /app/librechat.yaml
+          subPath: librechat.yaml
+      volumes:
+      - name: librechat-config
+        configMap:
+          name: librechat-config
 ---
 apiVersion: v1
 kind: Service
@@ -494,17 +505,158 @@ spec:
     nodePort: 32720
 ```
 
-### Apply
+---
+
+### Step 3 — Create `librechat-configmap.yaml`
+
+This file configures LibreChat endpoints. Add a new entry under `custom` for
+each additional AI provider (vLLM instances, other OpenAI-compatible APIs, etc.).
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: librechat-config
+  namespace: librechat
+data:
+  librechat.yaml: |
+    version: 1.2.1
+    endpoints:
+      custom:
+        - name: "vLLM"
+          apiKey: "vllm"
+          baseURL: "http://vllm-server.librechat.svc.cluster.local:8000/v1"
+          models:
+            default: ["tinyllama"]
+            fetch: true
+          titleConvo: true
+          titleModel: "current_model"
+          titleMessageRole: "user"
+          summarize: false
+          summaryModel: "current_model"
+          forcePrompt: false
+```
+
+> To add more vLLM instances (e.g. on different nodes or with different models),
+> add another entry under `custom` with a different `name` and `baseURL`.
+
+---
+
+### Step 4 — Create `vllm-deployment.yaml`
+
+```yaml
+# ── vLLM Model Cache PVC ───────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vllm-model-cache
+  namespace: librechat
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: caslab-retain-r1
+---
+# ── vLLM Deployment ────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+  namespace: librechat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm
+  template:
+    metadata:
+      labels:
+        app: vllm
+    spec:
+      nodeSelector:
+        lab: lobot_a16
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:latest
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: "2"
+            memory: "8Gi"
+          limits:
+            memory: "16Gi"
+            nvidia.com/gpu: 1
+        args:
+        - "--model"
+        - "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+        - "--served-model-name"
+        - "tinyllama"
+        env:
+        - name: HF_HOME
+          value: "/model-cache"
+        volumeMounts:
+        - name: model-cache
+          mountPath: /model-cache
+      volumes:
+      - name: model-cache
+        persistentVolumeClaim:
+          claimName: vllm-model-cache
+---
+# ── vLLM Service (ClusterIP — internal only, no NodePort) ─────────────────────
+# IMPORTANT: do NOT name this service "vllm" — Kubernetes injects VLLM_PORT as
+# a URI env var into the pod which conflicts with vLLM's own VLLM_PORT variable
+# and causes a crash. Use "vllm-server" instead.
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-server
+  namespace: librechat
+spec:
+  selector:
+    app: vllm
+  ports:
+  - port: 8000
+    targetPort: 8000
+```
+
+The first startup downloads the model from HuggingFace (~600MB for TinyLlama).
+Watch progress:
+
+```bash
+kubectl logs -n librechat deploy/vllm -f
+```
+
+Wait for `Application startup complete` before testing.
+
+To change the model, update `--model` and `--served-model-name` in the args and
+update the `models.default` list in the ConfigMap accordingly.
+
+---
+
+### Step 5 — Apply everything
 
 ```bash
 kubectl create namespace librechat
+kubectl apply -f librechat-configmap.yaml
 kubectl apply -f librechat-deployment.yaml
+kubectl apply -f vllm-deployment.yaml
 
-# block direct NodePort access
+# block direct NodePort access to LibreChat
 sudo iptables -t raw -A PREROUTING -p tcp --dport 32720 ! -s 127.0.0.1 -j DROP
 
 # do NOT add a rule for 8443 — that is the nginx listener port
 ```
+
+After updating the ConfigMap, restart LibreChat to pick up the changes:
+
+```bash
+kubectl rollout restart deployment/librechat -n librechat
+```
+
+---
 
 ### nginx (separate server block on port 8443)
 
@@ -548,28 +700,30 @@ server {
 
 Accessible at `https://lobot-dev.cs.queensu.ca:8443`.
 
+---
+
 ### Adding AI providers
 
-LibreChat picks up provider API keys via environment variables. Add them to the
-`env` section of the LibreChat deployment and re-apply.
+**Cloud providers** (OpenAI, Anthropic) — add API key env vars to the LibreChat
+deployment:
 
-| Provider  | Env var           |
-|-----------|-------------------|
-| OpenAI    | `OPENAI_API_KEY`  |
+| Provider  | Env var             |
+|-----------|---------------------|
+| OpenAI    | `OPENAI_API_KEY`    |
 | Anthropic | `ANTHROPIC_API_KEY` |
 
-> **Never paste API keys into chat or commit them to git.** Generate keys from
-> the provider's dashboard, add them to the deployment yaml on the server, and
-> keep that file out of version control.
+**Local/custom endpoints** (vLLM, other OpenAI-compatible APIs) — add entries
+to `librechat-configmap.yaml` under `endpoints.custom`, then restart LibreChat.
 
-After adding a key, restart the deployment:
+> **Never paste API keys into chat or commit them to git.** Add them directly
+> to the deployment yaml on the server and keep that file out of version control.
 
-```bash
-kubectl rollout restart deployment/librechat -n librechat
-```
+---
 
 ### First-time setup
 
-1. Register an account at `/register`
+1. Register an account at `https://lobot-dev.cs.queensu.ca:8443/register`
 2. Once your admin account is created, set `ALLOW_REGISTRATION: "false"` in the
    deployment and re-apply to prevent others from self-registering
+3. vLLM models appear under their `name` in the LibreChat model selector as a
+   separate provider from OpenAI
