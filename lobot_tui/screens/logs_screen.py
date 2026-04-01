@@ -1,6 +1,7 @@
 """LogsScreen: full-screen streaming pod log viewer."""
 
 import asyncio
+import os
 from datetime import datetime
 
 from textual.app import ComposeResult
@@ -159,7 +160,7 @@ class LogsScreen(Screen):
         if not self._log_lines:
             return
         with self.app.suspend():
-            print("\033[2J\033[H", end="")
+            os.system("clear")
             print("\n".join(self._log_lines))
             print("\033[2m--- Press Enter to return to lobot-tui ---\033[0m", flush=True)
             input()
