@@ -14,12 +14,12 @@ from ..themes import COLOR_CRIT, COLOR_OK, COLOR_WARN
 _FIXED_COLS = [
     ("RESOURCE", 20),
     ("NODE", 23),
-    ("IMAGE TAG", 66),
+    ("IMAGE TAG", 59),
     ("CPU", 5),
     ("RAM", 6),
     ("GPU", 4),
     ("AGE", 8),
-    ("STATUS", 10),
+    ("STATUS", 17),
 ]
 _NUM_COLS = len(_FIXED_COLS) + 1  # including USERNAME
 _FIXED_SUM = sum(w for _, w in _FIXED_COLS)

@@ -45,7 +45,7 @@ LONGHORN_NAMESPACE = "longhorn-system"
 
 # ── Display ───────────────────────────────────────────────────────────────────
 APP_TITLE = "LOBOT"
-MAX_TAG_LEN = 66  # truncate image tags in table (left-truncated, keeps date suffix)
+MAX_TAG_LEN = 59  # truncate image tags in table (left-truncated, keeps date suffix)
 
 # ── Dev/local mode: use mock data when kubectl is unavailable ──────────────────
 DEV_MODE = os.environ.get("LOBOT_TUI_DEV", "0") == "1"
