@@ -21,7 +21,7 @@ def load_group_roles_yaml(url: str, verbose: bool = False) -> Dict:
     return yaml.safe_load(r.text) or {}
 
 
-def get_group(api_url: str, token: str, name: str, verbose: bool = False) -> Dict:
+def get_group(api_url: str, token: str, name: str, verbose: bool = False) -> Dict | None:
     headers = {"Authorization": f"token {token}"}
     url = f"{api_url}/groups/{name}"
     vprint(verbose, f"[HTTP] GET {url}")

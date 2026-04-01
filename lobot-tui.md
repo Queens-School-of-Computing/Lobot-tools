@@ -128,12 +128,16 @@ python3 -m venv /opt/Lobot/tools/lobot_collector/.venv
 
 ### Environment variables
 
-`lobot-tui` and `lobot-collector` read two optional environment variables to locate the cluster-config repo and the tools directory.
+`lobot-tui` and `lobot-collector` read the following environment variables.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `LOBOT_CLUSTER_DIR` | `/opt/Lobot` | Path to the cluster-config repo (Helm configs, announcements, logs) |
 | `LOBOT_TOOLS_DIR` | `$LOBOT_CLUSTER_DIR/tools` | Path to the tools directory (overrides the derived default) |
+| `LOBOT_TUI_DEV` | `0` | Set to `1` to run with mock data and no kubectl required |
+| `LOBOT_TOOLS_LOCKED` | `1` | Set to `0` to allow live (non-dry-run) tool actions |
+| `LOBOT_TUI_THEME` | _(saved file)_ | Override the TUI theme: `lobot`, `lobot-light`, or `tricolour` |
+| `LOBOT_NODE_DOMAIN` | `cs.queensu.ca` | Domain appended to bare hostnames for SSH access |
 
 **Queens control plane (croot) — no action required.** The defaults match the deployment layout at `/opt/Lobot` and `/opt/Lobot/tools`.
 
@@ -164,6 +168,74 @@ sudo cp /opt/Lobot/tools/lobot-collector.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl restart lobot-collector
 ```
+
+---
+
+## Troubleshooting
+
+### `✗ lobot-collector is not running` in the status bar
+
+lobot-tui reads exclusively from the lobot-collector service. If the service is not running, the status bar shows a red error and an actionable hint. Start the collector:
+
+```bash
+sudo systemctl start lobot-collector
+sudo systemctl status lobot-collector
+```
+
+If the service fails to start, check the logs:
+
+```bash
+sudo journalctl -u lobot-collector -n 50
+```
+
+Common causes:
+- **Venv missing** — the collector venv was never created. Run:
+  ```bash
+  python3 -m venv /opt/Lobot/tools/lobot_collector/.venv
+  /opt/Lobot/tools/lobot_collector/.venv/bin/pip install \
+    -r /opt/Lobot/tools/lobot_collector/requirements-collector.txt
+  ```
+- **kubectl not on PATH** — the service user must have `kubectl` available and a valid kubeconfig. Check `sudo -u <service-user> kubectl get nodes`.
+- **Code updated but service not restarted** — after `git pull`, always restart the collector since `parsers.py` is shared with the TUI:
+  ```bash
+  sudo systemctl restart lobot-collector
+  ```
+
+### Tool actions are dry-run only / "Tools are locked"
+
+By default, `LOBOT_TOOLS_LOCKED=1` restricts all tool actions (image-pull, image-cleanup, apply-config, sync-groups, hub upgrade) to dry-run mode. This is a safety guard to prevent accidental changes.
+
+To unlock live operations, set `LOBOT_TOOLS_LOCKED=0` in your shell before launching the TUI:
+
+```bash
+LOBOT_TOOLS_LOCKED=0 lobot-tui
+```
+
+Or add it to your shell profile if you want it permanently unlocked on a given machine.
+
+### `python3.12-venv` missing / cannot create venv
+
+Ubuntu 24.04 does not install the venv module by default. Install it:
+
+```bash
+sudo apt install python3.12-venv
+```
+
+Then re-create the venv as shown in [Prerequisites](#prerequisites).
+
+### Running without a cluster (dev/demo mode)
+
+To explore the TUI interface without a live cluster or kubectl:
+
+```bash
+# Using the shell wrapper
+bash /opt/Lobot/tools/lobot-tui.sh --dev
+
+# Or via env var
+LOBOT_TUI_DEV=1 python3 -m lobot_tui
+```
+
+In dev mode the TUI loads mock cluster data (pods, nodes, disk) so all screens and panels are functional. Tool actions that would run shell commands still work but operate on the mock state.
 
 ---
 

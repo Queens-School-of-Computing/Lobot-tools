@@ -63,8 +63,9 @@ LOG_DIR = REPO_DIR / "logs"
 NODE_DOMAIN = os.environ.get("LOBOT_NODE_DOMAIN", "cs.queensu.ca")
 
 # ── Safety lock: when True, tool actions 1-5 are restricted to dry-run only ───
-# Set to False when ready to run tools live.
-TOOLS_LOCKED = False
+# Defaults to True. Set LOBOT_TOOLS_LOCKED=0 (or change this value) when ready
+# to run tools live on the cluster.
+TOOLS_LOCKED = os.environ.get("LOBOT_TOOLS_LOCKED", "1") != "0"
 
 # ── lobot-collector service connection ────────────────────────────────────────
 # The TUI connects here to receive pushed ClusterState updates via SSE.

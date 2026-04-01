@@ -29,8 +29,10 @@ Originally developed for the [Queen's School of Computing](https://github.com/Qu
 |---|---|---|
 | `LOBOT_CLUSTER_DIR` | `/opt/Lobot` | Path to the cluster-config repository |
 | `LOBOT_TOOLS_DIR` | `$LOBOT_CLUSTER_DIR/tools` | Path to this tools directory |
-
-Both variables default to the Queen's School of Computing layout (`/opt/Lobot`). Set them to use a different cluster-config location.
+| `LOBOT_TUI_DEV` | `0` | Set to `1` to run lobot-tui with mock data (no kubectl required) |
+| `LOBOT_TOOLS_LOCKED` | `1` | Set to `0` to allow live (non-dry-run) tool actions in lobot-tui |
+| `LOBOT_TUI_THEME` | _(saved file)_ | Override the TUI theme (`lobot`, `lobot-light`, or `tricolour`) |
+| `LOBOT_NODE_DOMAIN` | `cs.queensu.ca` | Node domain appended to bare hostnames for SSH access |
 
 ## Deployment
 

@@ -25,7 +25,7 @@ from pathlib import Path
 
 _CLUSTER_DIR = Path(os.environ.get("LOBOT_CLUSTER_DIR", "/opt/Lobot"))
 CONFIG_ENV = _CLUSTER_DIR / 'config-env.yaml'
-ASSETS_HTML = Path('.')
+ASSETS_HTML = _CLUSTER_DIR / 'assets' / 'html'
 IMAGE_REPO = 'queensschoolofcomputingdocker/gpu-jupyter-latest'
 
 CPU_STEPS = [2, 4, 8, 10, 16, 24, 32, 48, 64, 96, 128]
