@@ -279,14 +279,25 @@ def _merge_nodes_and_pods(partial_nodes: list, pods: list) -> tuple[list, dict]:
     partial_nodes must already carry allocatable values (populated by _parse_nodes).
     pods is the current pod list from _parse_pods.
     """
+    # Namespaces that are pure Kubernetes/infrastructure overhead — excluded from
+    # the ResourceSummary so it reflects user workload pressure only.
+    _SYSTEM_NAMESPACES = {
+        "kube-system",
+        "kube-public",
+        "kube-node-lease",
+        "longhorn-system",
+        "gpu-operator",
+        "cert-manager",
+    }
+
     # Sum ALL pod requests by node (used for NodeInfo — node panel shows everything)
     node_cpu_req: dict = {}
     node_ram_req: dict = {}
     node_gpu_req: dict = {}
-    # Sum only jupyter-* pod requests by node (used for ResourceSummary — user workloads only)
-    node_cpu_jupyter: dict = {}
-    node_ram_jupyter: dict = {}
-    node_gpu_jupyter: dict = {}
+    # Sum non-system pod requests by node (used for ResourceSummary — user workloads only)
+    node_cpu_user: dict = {}
+    node_ram_user: dict = {}
+    node_gpu_user: dict = {}
     for pod in pods:
         n = pod.node
         if not n:
@@ -294,10 +305,10 @@ def _merge_nodes_and_pods(partial_nodes: list, pods: list) -> tuple[list, dict]:
         node_cpu_req[n] = node_cpu_req.get(n, 0) + pod.cpu_requested
         node_ram_req[n] = node_ram_req.get(n, 0) + pod.ram_requested_gb
         node_gpu_req[n] = node_gpu_req.get(n, 0) + pod.gpu_requested
-        if pod.name.startswith("jupyter-"):
-            node_cpu_jupyter[n] = node_cpu_jupyter.get(n, 0) + pod.cpu_requested
-            node_ram_jupyter[n] = node_ram_jupyter.get(n, 0) + pod.ram_requested_gb
-            node_gpu_jupyter[n] = node_gpu_jupyter.get(n, 0) + pod.gpu_requested
+        if pod.namespace not in _SYSTEM_NAMESPACES:
+            node_cpu_user[n] = node_cpu_user.get(n, 0) + pod.cpu_requested
+            node_ram_user[n] = node_ram_user.get(n, 0) + pod.ram_requested_gb
+            node_gpu_user[n] = node_gpu_user.get(n, 0) + pod.gpu_requested
 
     # Merge with allocatable to produce final NodeInfo list.
     # Pod requests are float; round to int for node-level display (allocatable is always whole).
@@ -336,9 +347,9 @@ def _merge_nodes_and_pods(partial_nodes: list, pods: list) -> tuple[list, dict]:
                 gpu_total=0,
             )
         s = resources[resource_name]
-        jupyter_cpu = round(node_cpu_jupyter.get(node.name, 0))
-        jupyter_ram = round(node_ram_jupyter.get(node.name, 0), 1)
-        jupyter_gpu = node_gpu_jupyter.get(node.name, 0)
+        jupyter_cpu = round(node_cpu_user.get(node.name, 0))
+        jupyter_ram = round(node_ram_user.get(node.name, 0), 1)
+        jupyter_gpu = node_gpu_user.get(node.name, 0)
         s.cpu_total += node.cpu_allocatable
         s.cpu_free += max(0, node.cpu_allocatable - jupyter_cpu)
         s.ram_total_gb += node.ram_allocatable_gb
