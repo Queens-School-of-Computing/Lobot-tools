@@ -411,6 +411,12 @@ spec:
         image: mongo:4.4
         ports:
         - containerPort: 27017
+#        resources:
+#          requests:
+#            cpu: "250m"
+#            memory: "256Mi"
+#          limits:
+#            memory: "1Gi"
         volumeMounts:
         - name: mongo-data
           mountPath: /data/db
@@ -455,8 +461,12 @@ spec:
         ports:
         - containerPort: 3080
         resources:
-          limits:
-            nvidia.com/gpu: 1
+#          requests:
+#            cpu: "500m"
+#            memory: "512Mi"
+#          limits:
+#            memory: "2Gi"
+#             nvidia.com/gpu: 1   # uncomment if a GPU is required
         env:
         - name: MONGO_URI
           value: "mongodb://mongodb.librechat.svc.cluster.local:27017/LibreChat"
