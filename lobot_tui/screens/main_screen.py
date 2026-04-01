@@ -60,6 +60,9 @@ _DEFAULT_NS_FILTERS: dict[str, str] = {
 }
 
 
+_NS_LAST_KEY = "__last_namespace__"  # reserved key stored alongside filters
+
+
 def _load_ns_filters() -> dict[str, str]:
     """Load saved per-namespace filters, merging with defaults."""
     result = dict(_DEFAULT_NS_FILTERS)
@@ -203,6 +206,16 @@ class MainScreen(Screen):
 
     async def _load_namespaces(self) -> None:
         self._namespaces = await _fetch_namespaces()
+        # Restore the last-used namespace if it still exists in the list
+        last_ns = self._ns_filters.get(_NS_LAST_KEY)
+        if last_ns and last_ns in self._namespaces:
+            self._ns_idx = self._namespaces.index(last_ns)
+            pod_table = self.query_one("#pod-table", PodTableWidget)
+            pod_table.namespace = last_ns
+            self._collector.namespace = last_ns
+            inp = self.query_one("#pod-filter-input", Input)
+            inp.value = self._ns_filters.get(last_ns, "")
+            self._update_pod_label()
 
     def _tick_clock(self) -> None:
         hostname = socket.gethostname()
@@ -440,9 +453,12 @@ class MainScreen(Screen):
         old_ns = self._namespaces[self._ns_idx]
         inp = self.query_one("#pod-filter-input", Input)
         self._ns_filters[old_ns] = inp.value
-        _save_ns_filters(self._ns_filters)
 
         self._ns_idx = (self._ns_idx + 1) % len(self._namespaces)
+
+        # Persist both the filter and the new active namespace
+        self._ns_filters[_NS_LAST_KEY] = self._namespaces[self._ns_idx]
+        _save_ns_filters(self._ns_filters)
         ns = self._namespaces[self._ns_idx]
         self._collector.namespace = ns
 
