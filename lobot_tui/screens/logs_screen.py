@@ -159,6 +159,7 @@ class LogsScreen(Screen):
         if not self._log_lines:
             return
         with self.app.suspend():
+            print("\033[2J\033[H", end="")
             print("\n".join(self._log_lines))
             print("\033[2m--- Press Enter to return to lobot-tui ---\033[0m", flush=True)
             input()
