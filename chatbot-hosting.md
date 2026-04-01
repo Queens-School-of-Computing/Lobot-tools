@@ -17,7 +17,8 @@ control plane proxies requests through.
 
 ## Step 1 — Create the Namespace and Deployment
 
-Create a manifest file, e.g. `chatbot-deployment.yaml`:
+Create a manifest file, e.g. `chatbot-deployment.yaml`. Include every resource
+in one file — Deployment, Service, and any companion services (see Step 1b).
 
 ```yaml
 apiVersion: apps/v1
@@ -45,6 +46,9 @@ spec:
         resources:
           limits:
             nvidia.com/gpu: 1   # number of GPU slots to request
+        env:
+        - name: SOME_REQUIRED_VAR
+          value: "value"        # check the app's docs for required env vars
 ---
 apiVersion: v1
 kind: Service
@@ -60,6 +64,11 @@ spec:
     targetPort: 8080
     nodePort: 30002             # pick an unused port (30000–32767)
 ```
+
+> **Important:** Every `kind: Service` that the app needs must be explicitly
+> defined in the yaml. Deployments do not create Services automatically. If a
+> Service is missing, in-cluster DNS will fail with `ENOTFOUND` even if the pod
+> is running.
 
 Apply it:
 
@@ -89,6 +98,88 @@ change the `nodeSelector` value and re-apply the manifest.
 
 ---
 
+## Step 1b — Companion Services (e.g. a Database)
+
+Some apps require a database or other companion service. Deploy it in the same
+namespace and same manifest file.
+
+### MongoDB example (with Longhorn persistent storage)
+
+```yaml
+# ── PVC ────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-data
+  namespace: chatbot
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: longhorn
+---
+# ── MongoDB Deployment ─────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+  namespace: chatbot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      nodeSelector:
+        lab: lobot_a16
+      containers:
+      - name: mongodb
+        image: mongo:4.4        # see MongoDB AVX note below
+        ports:
+        - containerPort: 27017
+        volumeMounts:
+        - name: mongo-data
+          mountPath: /data/db
+      volumes:
+      - name: mongo-data
+        persistentVolumeClaim:
+          claimName: mongodb-data
+---
+# ── MongoDB Service ────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: chatbot
+spec:
+  selector:
+    app: mongodb
+  ports:
+  - port: 27017
+    targetPort: 27017
+```
+
+Connect to it from the app using the **fully qualified in-cluster DNS name**:
+
+```
+mongodb://mongodb.<namespace>.svc.cluster.local:27017/<dbname>
+```
+
+> **Do not use just `mongodb`** as the hostname — short names can fail to
+> resolve depending on the pod's DNS search path. The full FQDN always works.
+
+> **MongoDB AVX:** MongoDB 5.0+ requires AVX CPU support. The Lobot cluster
+> nodes do not have AVX. Use `mongo:4.4` — it is the last version that works
+> without AVX.
+
+---
+
 ## Step 2 — Block Direct NodePort Access
 
 Prevent outside traffic from hitting the NodePort directly, forcing all access
@@ -100,6 +191,9 @@ sudo iptables -t raw -A PREROUTING -p tcp --dport 30002 ! -s 127.0.0.1 -j DROP
 
 Persist the rule the same way the Longhorn rule (port 30001) is persisted on
 the control plane.
+
+> **Only apply this rule to Kubernetes NodePorts**, not to nginx listener ports.
+> See the Subpath Compatibility note below.
 
 ---
 
@@ -146,8 +240,8 @@ The app will be accessible at `https://<cluster-hostname>/chatbot/`.
 
 Kubernetes tracks `nvidia.com/gpu` as an integer resource. When a pod requests
 1 GPU slot, that slot is subtracted from the node's available count and cannot
-be scheduled to another pod — so your mental model of "8 GPUs, chatbot takes 1,
-7 left for JupyterHub pods" is correct **as far as Kubernetes is concerned**.
+be scheduled to another pod — so "8 GPUs, chatbot takes 1, 7 left for JupyterHub
+pods" is correct **as far as Kubernetes is concerned**.
 
 **Important caveat — time slicing on the A16 node:** The A16 node uses GPU time
 slicing (`replicas: 4` in `time-slicing-config-fine`), meaning each physical
@@ -178,22 +272,81 @@ kubectl describe node <nodename> | grep -A5 "Allocated resources"
 - **`proxy_read_timeout 300s`** — the default 60 s timeout will kill slow
   inferences. Adjust as needed for the model being served.
 
+---
+
 ### Subpath compatibility
+
 The `proxy_pass` trailing slash rewrites `/chatbot/foo` → `/foo` on the
 upstream. This works if the app is path-agnostic. If the app hardcodes absolute
-paths in its HTML/JS (e.g. `src="/static/app.js"`), the assets will 404.
-Options:
-- Ask the developers to set a base-path environment variable (common in React/
-  Next.js apps via `NEXT_PUBLIC_BASE_PATH=/chatbot`).
-- Or expose the app on a subdomain instead (avoids all subpath issues):
-  `chatbot.lobot-dev.cs.queensu.ca`.
+paths in its HTML/JS (e.g. `src="/static/app.js"`), the assets will 404 — this
+is common with Vite/React SPAs where asset paths are baked in at build time.
 
-### Access control
-This config is open to the public. To restrict to campus IPs (like Longhorn),
-add the allow/deny block before `proxy_pass`:
+**If the app does not support subpath deployment, use a dedicated port instead.**
+Add a separate `server` block in the same nginx config file (not inside the
+existing one) listening on a different port, e.g. 8443:
 
 ```nginx
-    allow 130.15.0.0/16;
+server {
+    listen 8443 ssl;
+    server_name lobot-dev.cs.queensu.ca;
+
+    ssl_certificate /etc/letsencrypt/live/lobot-dev.cs.queensu.ca/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/lobot-dev.cs.queensu.ca/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    location / {
+        allow 130.15.1.0/24;
+        allow 130.15.2.0/24;
+        allow 130.15.3.0/24;
+        allow 130.15.4.0/24;
+        allow 130.15.5.0/24;
+        allow 130.15.6.0/24;
+        allow 130.15.7.0/24;
+        deny all;
+
+        proxy_pass http://127.0.0.1:<nodePort>/;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_redirect off;
+
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+    }
+}
+```
+
+**Do NOT add an iptables DROP rule for this port.** Unlike NodePort rules
+(30001, 32720, etc.), this port is nginx itself and must accept external traffic.
+If you accidentally add a DROP rule for it, remove it with:
+
+```bash
+sudo iptables -t raw -D PREROUTING -p tcp --dport 8443 ! -s 127.0.0.1 -j DROP
+```
+
+The app will be accessible at `https://<cluster-hostname>:8443`.
+
+---
+
+### Access control
+
+To restrict to campus IPs, add the allow/deny block before `proxy_pass`:
+
+```nginx
+    allow 130.15.1.0/24;
+    allow 130.15.2.0/24;
+    allow 130.15.3.0/24;
+    allow 130.15.4.0/24;
+    allow 130.15.5.0/24;
+    allow 130.15.6.0/24;
+    allow 130.15.7.0/24;
     deny all;
 ```
 
@@ -209,3 +362,204 @@ Create the password file:
 ```bash
 sudo htpasswd -c /etc/nginx/.htpasswd-chatbot <username>
 ```
+
+---
+
+## Appendix — LibreChat Deployment
+
+LibreChat is a Vite/React SPA and does not support subpath deployment. It is
+exposed on port 8443 using the dedicated port pattern above. It requires MongoDB
+and several mandatory environment variables.
+
+### Complete manifest (`librechat-deployment.yaml`)
+
+```yaml
+# ── MongoDB PVC ────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-data
+  namespace: librechat
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: longhorn
+---
+# ── MongoDB ────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+  namespace: librechat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      nodeSelector:
+        lab: lobot_a16
+      containers:
+      - name: mongodb
+        image: mongo:4.4
+        ports:
+        - containerPort: 27017
+        volumeMounts:
+        - name: mongo-data
+          mountPath: /data/db
+      volumes:
+      - name: mongo-data
+        persistentVolumeClaim:
+          claimName: mongodb-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: librechat
+spec:
+  selector:
+    app: mongodb
+  ports:
+  - port: 27017
+    targetPort: 27017
+---
+# ── LibreChat ──────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: librechat
+  namespace: librechat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: librechat
+  template:
+    metadata:
+      labels:
+        app: librechat
+    spec:
+      nodeSelector:
+        lab: lobot_a16
+      containers:
+      - name: librechat
+        image: librechat/librechat:latest
+        ports:
+        - containerPort: 3080
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+        env:
+        - name: MONGO_URI
+          value: "mongodb://mongodb.librechat.svc.cluster.local:27017/LibreChat"
+        - name: JWT_SECRET
+          value: "<generate: openssl rand -hex 32>"
+        - name: JWT_REFRESH_SECRET
+          value: "<generate: openssl rand -hex 32>"
+        - name: ALLOW_REGISTRATION
+          value: "true"          # set to "false" after creating your admin account
+        - name: OPENAI_API_KEY
+          value: "<your-openai-api-key>"   # enables GPT models in the model selector
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: librechat
+  namespace: librechat
+spec:
+  type: NodePort
+  selector:
+    app: librechat
+  ports:
+  - port: 3080
+    targetPort: 3080
+    nodePort: 32720
+```
+
+### Apply
+
+```bash
+kubectl create namespace librechat
+kubectl apply -f librechat-deployment.yaml
+
+# block direct NodePort access
+sudo iptables -t raw -A PREROUTING -p tcp --dport 32720 ! -s 127.0.0.1 -j DROP
+
+# do NOT add a rule for 8443 — that is the nginx listener port
+```
+
+### nginx (separate server block on port 8443)
+
+```nginx
+server {
+    listen 8443 ssl;
+    server_name lobot-dev.cs.queensu.ca;
+
+    ssl_certificate /etc/letsencrypt/live/lobot-dev.cs.queensu.ca/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/lobot-dev.cs.queensu.ca/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    location / {
+        allow 130.15.1.0/24;
+        allow 130.15.2.0/24;
+        allow 130.15.3.0/24;
+        allow 130.15.4.0/24;
+        allow 130.15.5.0/24;
+        allow 130.15.6.0/24;
+        allow 130.15.7.0/24;
+        deny all;
+
+        proxy_pass http://127.0.0.1:32720/;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_redirect off;
+
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+    }
+}
+```
+
+Accessible at `https://lobot-dev.cs.queensu.ca:8443`.
+
+### Adding AI providers
+
+LibreChat picks up provider API keys via environment variables. Add them to the
+`env` section of the LibreChat deployment and re-apply.
+
+| Provider  | Env var           |
+|-----------|-------------------|
+| OpenAI    | `OPENAI_API_KEY`  |
+| Anthropic | `ANTHROPIC_API_KEY` |
+
+> **Never paste API keys into chat or commit them to git.** Generate keys from
+> the provider's dashboard, add them to the deployment yaml on the server, and
+> keep that file out of version control.
+
+After adding a key, restart the deployment:
+
+```bash
+kubectl rollout restart deployment/librechat -n librechat
+```
+
+### First-time setup
+
+1. Register an account at `/register`
+2. Once your admin account is created, set `ALLOW_REGISTRATION: "false"` in the
+   deployment and re-apply to prevent others from self-registering

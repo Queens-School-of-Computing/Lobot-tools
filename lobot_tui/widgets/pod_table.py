@@ -31,6 +31,13 @@ PHASE_MARKUP = {
     "Pending": f"[{COLOR_WARN}]◌ Pending[/]",
     "Failed": f"[{COLOR_CRIT}]✖ Failed[/]",
     "Succeeded": "[dim]✓ Done[/]",
+    "Terminating": f"[{COLOR_WARN}]⊘ Terminating[/]",
+    "CrashLoopBackOff": f"[{COLOR_CRIT}]↺ CrashLoop[/]",
+    "OOMKilled": f"[{COLOR_CRIT}]✖ OOMKilled[/]",
+    "Error": f"[{COLOR_CRIT}]✖ Error[/]",
+    "ImagePullBackOff": f"[{COLOR_WARN}]⬇ ImgPullErr[/]",
+    "ErrImagePull": f"[{COLOR_WARN}]⬇ ImgPullErr[/]",
+    "CreateContainerConfigError": f"[{COLOR_CRIT}]✖ ConfigErr[/]",
 }
 
 

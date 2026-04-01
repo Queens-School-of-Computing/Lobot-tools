@@ -141,6 +141,23 @@ def _parse_pods(json_str: str, namespace: str, node_resource_map: dict) -> list:
             phase = status.get("phase", "Unknown")
             start_time = status.get("startTime")
 
+            # Derive effective status the same way kubectl does — phase alone
+            # reports "Running" even during CrashLoopBackOff. Check container
+            # states first, then fall back to phase.
+            if meta.get("deletionTimestamp"):
+                phase = "Terminating"
+            else:
+                for cs in status.get("containerStatuses", []):
+                    state = cs.get("state", {})
+                    waiting_reason = state.get("waiting", {}).get("reason", "")
+                    terminated_reason = state.get("terminated", {}).get("reason", "")
+                    if waiting_reason:
+                        phase = waiting_reason   # e.g. CrashLoopBackOff, ImagePullBackOff
+                        break
+                    if terminated_reason and terminated_reason != "Completed":
+                        phase = terminated_reason  # e.g. OOMKilled, Error
+                        break
+
             # Image from first container
             containers = spec.get("containers", [{}])
             image = containers[0].get("image", "") if containers else ""
