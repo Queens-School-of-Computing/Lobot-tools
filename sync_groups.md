@@ -46,7 +46,7 @@ Wrapper script that fetches the JupyterHub API token from Kubernetes and calls
 
 # Or via environment variables:
 API_URL=https://lobot.cs.queensu.ca/hub/api \
-GROUP_ROLES_URL=https://raw.githubusercontent.com/.../group-roles.yaml \
+GROUP_ROLES_URL=https://cdn.jsdelivr.net/gh/Queens-School-of-Computing/Lobot@main/group-roles.yaml \
   ./sync_groups.sh [--verbose] [--dry-run]
 ```
 
@@ -89,11 +89,11 @@ scripts unchanged.
 # Live run on dev with explicit URLs
 ./sync_groups.sh \
   https://lobot-dev.cs.queensu.ca/hub/api \
-  https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/group-roles.yaml
+  https://cdn.jsdelivr.net/gh/Queens-School-of-Computing/Lobot@main/group-roles.yaml
 
 # Or via env vars for dev
 API_URL=https://lobot-dev.cs.queensu.ca/hub/api \
-GROUP_ROLES_URL=https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/group-roles.yaml \
+GROUP_ROLES_URL=https://cdn.jsdelivr.net/gh/Queens-School-of-Computing/Lobot@main/group-roles.yaml \
   ./sync_groups.sh --dry-run
 ```
 
@@ -271,7 +271,7 @@ export GROUP_ROLES_URL=$(python3 -c "import yaml; print(yaml.safe_load(open('/op
 To override explicitly instead:
 
 ```bash
-GROUP_ROLES_URL=https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/group-roles.yaml \
+GROUP_ROLES_URL=https://cdn.jsdelivr.net/gh/Queens-School-of-Computing/Lobot@main/group-roles.yaml \
   ./sync_groups.sh https://lobot-dev.cs.queensu.ca/hub/api
 ```
 
