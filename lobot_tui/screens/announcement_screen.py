@@ -19,8 +19,8 @@ DEV_KEY = "announcement_dev"
 
 # Fallback URL if we can't read it from the env config
 _FALLBACK_URL = (
-    "https://cdn.jsdelivr.net/gh/Queens-School-of-Computing/"
-    "Lobot@main/announcement.yaml"
+    "https://raw.githubusercontent.com/Queens-School-of-Computing/"
+    "Lobot/main/announcement.yaml"
 )
 
 

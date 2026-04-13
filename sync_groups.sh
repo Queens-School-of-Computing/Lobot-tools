@@ -26,7 +26,7 @@ Both variables can be set from the control plane environment before running:
 Examples:
   ./sync_groups.sh
   ./sync_groups.sh https://lobot.cs.queensu.ca/hub/api --dry-run --verbose
-  ./sync_groups.sh https://lobot-dev.cs.queensu.ca/hub/api https://cdn.jsdelivr.net/gh/Queens-School-of-Computing/Lobot@main/group-roles.yaml
+  ./sync_groups.sh https://lobot-dev.cs.queensu.ca/hub/api https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/group-roles.yaml
 EOF
 }
 
@@ -35,7 +35,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   exit 0
 fi
 
-DEFAULT_GROUP_ROLES_URL="https://cdn.jsdelivr.net/gh/Queens-School-of-Computing/Lobot@main/group-roles.yaml"
+DEFAULT_GROUP_ROLES_URL="https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/group-roles.yaml"
 
 # 1. Get API_URL from $1 (if not a flag) or $API_URL env or default
 if [[ "${1:-}" != --* && -n "${1:-}" ]]; then

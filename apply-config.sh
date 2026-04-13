@@ -28,7 +28,7 @@ else
     CONFIG_BK_ENV="config-prod.yaml.bk"
 fi
 CONFIG_BK="config.yaml.bk"
-REPO_RAW="https://cdn.jsdelivr.net/gh/Queens-School-of-Computing/Lobot@main"
+REPO_RAW="https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main"
 
 echo "[apply-config] Cluster:  $CLUSTER"
 echo "[apply-config] Base template:     $CONFIG_BK"

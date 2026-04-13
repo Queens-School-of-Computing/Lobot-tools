@@ -1,6 +1,6 @@
 # Cluster Setup Guide
 
-![](https://cdn.jsdelivr.net/gh/Queens-School-of-Computing/Lobot@main/assets/images/newsetupbanner.jpg)
+![](https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/assets/images/newsetupbanner.jpg)
 
 Aaron Visser — Created: April 2025 (original documentation ~2021)\
 Updated: March 2026 — two-file config, apply-config.sh, Lobot tools section
@@ -317,7 +317,7 @@ sudo systemctl restart kubelet
 ## Step 13 — Helm
 
 ```bash
-curl -fsSL -o get_helm.sh https://cdn.jsdelivr.net/gh/helm/helm@master/scripts/get-helm-3 \
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 \
   && chmod 700 get_helm.sh \
   && ./get_helm.sh
 ```

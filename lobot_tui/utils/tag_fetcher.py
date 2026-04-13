@@ -11,8 +11,8 @@ DOCKERHUB_TAGS_URL = (
 )
 
 RUNTIME_SETTING_URL = (
-    "https://cdn.jsdelivr.net/gh/Queens-School-of-Computing/"
-    "Lobot@main/runtime_setting.yaml"
+    "https://raw.githubusercontent.com/Queens-School-of-Computing/"
+    "Lobot/main/runtime_setting.yaml"
 )
 
 
