@@ -43,6 +43,7 @@ RESOURCE_DISPLAY_NAMES: dict = {
     "lobot_a16": "Lobot [A16]",
     "lobot_problackwell": "Lobot [Blackwell]",
     "edemsmithbusiness": "Smith School of Business (Edem)",
+    "quarrglab": "QUARRG Lab",
 }
 
 # ── Dev mode ───────────────────────────────────────────────────────────────────
