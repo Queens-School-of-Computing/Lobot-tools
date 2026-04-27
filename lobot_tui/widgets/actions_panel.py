@@ -13,6 +13,7 @@ _ROW1_LEFT = [
     ("[bold cyan](l)[/] logs", "hint-pod", "l"),
     ("[bold cyan](x)[/] exec", "hint-pod", "x"),
     ("[bold cyan](d)[/] describe", "hint-pod", "d"),
+    ("[bold cyan](D)[/] diagnose", "hint-pod", "D"),
     ("[bold cyan](X)[/] delete", "hint-pod", "X"),
     ("[bold cyan](f)[/] filter", "hint-pod", "f"),
     ("[bold cyan](N)[/] ns", "hint-pod", "N"),
