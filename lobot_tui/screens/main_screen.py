@@ -132,6 +132,7 @@ class MainScreen(Screen):
         ("x", "pod_exec", "Exec"),
         ("X", "pod_delete", "Delete pod"),
         ("d", "pod_describe", "Describe pod"),
+        ("D", "pod_diagnose", "Diagnose pod"),
         ("i", "pod_lv_manage", "LV Info"),
         ("E", "pod_lv_expand", "LV Expand"),
         ("f", "focus_filter", "Filter"),
@@ -500,6 +501,12 @@ class MainScreen(Screen):
         pod = self._require_pod()
         if pod:
             self.app.push_screen(ExecScreen(pod))
+
+    def action_pod_diagnose(self) -> None:
+        pod = self._require_pod()
+        if pod:
+            script = TOOLS_DIR / "jhub-pod-diag.sh"
+            self.app.push_screen(ActionScreen(f"diag {pod.name}", [str(script), pod.name]))
 
     def action_pod_delete(self) -> None:
         pod = self._require_pod()

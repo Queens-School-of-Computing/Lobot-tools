@@ -65,6 +65,7 @@ class PodContextMenuScreen(Screen):
             yield Button("(l)  Logs", id="ctx-logs", classes="ctx-btn")
             yield Button("(x)  Exec into pod", id="ctx-exec", classes="ctx-btn")
             yield Button("(d)  Describe", id="ctx-describe", classes="ctx-btn")
+            yield Button("(D)  Diagnose", id="ctx-diagnose", classes="ctx-btn")
             yield Button("(R)  Restart", id="ctx-restart", classes="ctx-btn")
             yield Button("(X)  Delete", id="ctx-delete", classes="ctx-btn")
 
