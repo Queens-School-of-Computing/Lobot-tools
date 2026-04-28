@@ -26,11 +26,12 @@ class ActionField:
     placeholder: str = ""
     field_type: str = "input"
     # field_type values:
-    #   "input"        — plain text Input widget
-    #   "checkbox"     — Checkbox widget; default "true"/"false"; value stored as bool
-    #   "tag_select"   — image-name Input + async tag Select combo
-    #   "node_exclude" — text Input + "Pick…" button (multi-select, comma-sep)
-    #   "node_single"  — text Input + "Pick…" button (single node, -n flag)
+    #   "input"            — plain text Input widget
+    #   "checkbox"         — Checkbox widget; default "true"/"false"; value stored as bool
+    #   "tag_select"       — image-name Input + async tag Select combo (single tag)
+    #   "multi_tag_select" — image-name Input + async SelectionList combo (multiple tags); value is list[str]
+    #   "node_exclude"     — text Input + "Pick…" button (multi-select, comma-sep)
+    #   "node_single"      — text Input + "Pick…" button (single node, -n flag)
 
 
 @dataclass
@@ -72,7 +73,9 @@ def _image_pull_cmd(values: dict) -> list:
 
 
 def _image_cleanup_cmd(values: dict) -> list:
-    cmd = ["bash", "image-cleanup.sh", "-i", values["image"]]
+    cmd = ["bash", "image-cleanup.sh"]
+    for img in values["images"]:
+        cmd += ["-i", img]
     node = values.get("node", "").strip()
     if node:
         cmd += ["-n", node]
@@ -154,16 +157,16 @@ ACTIONS: list = [
     ActionDef(
         key="2",
         name="image-cleanup",
-        description="Remove old image tags from nodes (keeps the specified tag).",
+        description="Remove old image tags from nodes (keeps the specified tags).",
         needs_confirm=True,
         has_dry_run=True,
         fields=[
             ActionField(
-                "image",
-                "Image to KEEP",
+                "images",
+                "Image repo / Tags to KEEP",
                 "queensschoolofcomputingdocker/gpu-jupyter-latest",
                 placeholder="queensschoolofcomputingdocker/gpu-jupyter-latest",
-                field_type="tag_select",
+                field_type="multi_tag_select",
             ),
             ActionField(
                 "exclude", "Exclude nodes", CONTROL_PLANE, required=False, field_type="node_exclude"

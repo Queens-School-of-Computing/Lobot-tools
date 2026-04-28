@@ -75,6 +75,8 @@ class ActionWizardScreen(ModalScreen):
             for f in other_fields:
                 if f.field_type == "tag_select":
                     yield from self._compose_tag_select(f)
+                elif f.field_type == "multi_tag_select":
+                    yield from self._compose_multi_tag_select(f)
                 elif f.field_type == "node_exclude":
                     yield from self._compose_node_exclude(f)
                 elif f.field_type == "node_single":
@@ -138,6 +140,18 @@ class ActionWizardScreen(ModalScreen):
             allow_blank=True,
         )
 
+    def _compose_multi_tag_select(self, f: ActionField):
+        """Yield label + image-name input + tag SelectionList for a multi_tag_select field."""
+        yield Label(f.label + (" *" if f.required else ""), classes="wizard-field-label")
+        yield Input(
+            value=f.default,
+            placeholder=f.placeholder or f.default,
+            id=f"field-{f.name}-repo",
+            classes="wizard-input",
+        )
+        yield Label("Tags to KEEP (loading…)", id=f"lbl-{f.name}-tag", classes="wizard-field-label")
+        yield SelectionList(id=f"field-{f.name}-tags", classes="wizard-selection-list")
+
     def _compose_node_exclude(self, f: ActionField):
         """Yield label + SelectionList (multi-check) for the -e exclude field."""
         yield Label(
@@ -188,6 +202,12 @@ class ActionWizardScreen(ModalScreen):
                     exclusive=False,
                     name=f"load-tags-{f.name}",
                 )
+            elif f.field_type == "multi_tag_select":
+                self.run_worker(
+                    self._load_tags_multi(f),
+                    exclusive=False,
+                    name=f"load-tags-multi-{f.name}",
+                )
 
     async def _load_tags(self, f: ActionField) -> None:
         """Fetch tags and populate the Select widget."""
@@ -235,6 +255,49 @@ class ActionWizardScreen(ModalScreen):
                 pass
         except Exception as exc:
             select.prompt = f"Error loading tags: {exc}"
+
+    async def _load_tags_multi(self, f: ActionField) -> None:
+        """Fetch tags and populate the SelectionList widget (multi_tag_select)."""
+        list_id = f"field-{f.name}-tags"
+        label_id = f"lbl-{f.name}-tag"
+        try:
+            sel_list = self.query_one(f"#{list_id}", SelectionList)
+        except Exception:
+            return
+        try:
+            try:
+                repo_input = self.query_one(f"#field-{f.name}-repo", Input)
+                repo = repo_input.value.strip() or f.default
+            except Exception:
+                repo = f.default
+            tags = await self._run_in_executor(fetch_dockerhub_tags, repo)
+
+            def _date_key(tag: str) -> str:
+                m = _re.search(r"(\d{8})(?:-\d+)?$", tag)
+                return m.group(1) if m else tag
+
+            tags.sort(key=_date_key, reverse=True)
+
+            def _label(tag: str, max_len: int = 80) -> str:
+                if len(tag) <= max_len:
+                    return tag
+                return "…" + tag[-(max_len - 1):]
+
+            items = [(_label(t), t, False) for t in tags]
+            sel_list.clear_options()
+            for item in items:
+                sel_list.add_option(item)
+            try:
+                lbl = self.query_one(f"#{label_id}", Label)
+                lbl.update("Tags to KEEP (select one or more)")
+            except Exception:
+                pass
+        except Exception as exc:
+            try:
+                lbl = self.query_one(f"#{label_id}", Label)
+                lbl.update(f"Error loading tags: {exc}")
+            except Exception:
+                pass
 
     async def _run_in_executor(self, fn, *args):
         """Run a blocking function in a thread pool and return the result."""
@@ -319,6 +382,19 @@ class ActionWizardScreen(ModalScreen):
                 else:
                     values[f.name] = f"{repo}:{tag_val}"
 
+            elif f.field_type == "multi_tag_select":
+                try:
+                    repo_inp = self.query_one(f"#field-{f.name}-repo", Input)
+                    repo = repo_inp.value.strip() or f.default
+                except Exception:
+                    repo = f.default
+                try:
+                    sel_list = self.query_one(f"#field-{f.name}-tags", SelectionList)
+                    selected = [str(v) for v in sel_list.selected]
+                except Exception:
+                    selected = []
+                values[f.name] = [v if ":" in v else f"{repo}:{v}" for v in selected]
+
             elif f.field_type == "node_exclude":
                 try:
                     sel = self.query_one(f"#field-{f.name}", SelectionList)
@@ -364,13 +440,13 @@ class ActionWizardScreen(ModalScreen):
 
         values = self._collect_values(dry_run=dry_run)
 
-        # Validate required fields (only text inputs and tag_select have required)
+        # Validate required fields (only text inputs and tag_select types have required)
         for f in self._action.fields:
-            if f.required and f.field_type in ("input", "tag_select"):
+            if f.required and f.field_type in ("input", "tag_select", "multi_tag_select"):
                 val = values.get(f.name, "")
-                if not val:
+                if not val:  # empty string or empty list both falsy
                     try:
-                        if f.field_type == "tag_select":
+                        if f.field_type in ("tag_select", "multi_tag_select"):
                             inp = self.query_one(f"#field-{f.name}-repo", Input)
                         else:
                             inp = self.query_one(f"#field-{f.name}", Input)
