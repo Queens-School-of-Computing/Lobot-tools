@@ -250,6 +250,30 @@ helm upgrade ...
 ./image-cleanup.sh -i <new-image:tag>
 ```
 
+### Typical Workflow for Nightly Builds
+
+When running nightly builds, several dated image tags accumulate alongside the
+floating nightly tag. Pull the tags you want on nodes and keep only those during
+cleanup — everything else is removed.
+
+```bash
+# Pull the latest nightly (floating tag) and the two most recent dated tags
+./image-pull.sh \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260428 \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260427 \
+  -b 3
+
+# Clean up — keep the same three tags; remove all others
+./image-cleanup.sh \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260428 \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260427
+```
+
+Both the image-pull and image-cleanup actions in lobot-tui support selecting
+multiple tags simultaneously via their tag multi-select field.
+
 ---
 
 ## image-cleanup.sh
@@ -324,8 +348,10 @@ pods (e.g. long-running user sessions that haven't restarted yet).
    against the host containerd
 6. For each image tag removed, also removes the corresponding `sha256:` digest
    reference — this is critical for actual blob GC and disk space recovery
-7. Collects logs from all pods and reports results
-8. Deletes the DaemonSet and ConfigMap on completion
+7. Waits 10 seconds for containerd's automatic garbage collector to reclaim
+   freed blobs before sampling the after-cleanup disk stats
+8. Collects logs from all pods and reports results
+9. Deletes the DaemonSet and ConfigMap on completion
 
 ### Node Pre-Flight Checks {#image-cleanup-preflight}
 
@@ -438,6 +464,12 @@ containerd's content store. The blobs will not be freed until ALL references
 pointing to that manifest are removed. This is why a `ctr images rm` of a named
 tag followed by a re-pull shows `already exists` for all layers — the data never
 actually left disk.
+
+After removing both references, containerd's garbage collector runs automatically
+in the background and reclaims the freed layer blobs. The cleanup script waits
+10 seconds before sampling disk usage to allow the GC to complete. There is no
+`ctr content gc` CLI command to force this — GC is internal to the containerd
+daemon and triggered automatically once all references are cleared.
 
 ### Email Notifications
 
@@ -566,12 +598,6 @@ before proceeding. On a busy cluster this may not be enough. If you see the
 ---
 
 ## Potential Improvements
-
-### Automatic digest ref discovery
-The script currently removes digest refs that share a manifest digest with the
-named tag being removed. A more thorough approach would also check for
-`sha256:`-prefixed refs in the `default` containerd namespace which these
-scripts do not currently touch.
 
 ### Slack notification
 Post a summary to a Slack channel on completion, particularly useful for the

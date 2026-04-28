@@ -267,6 +267,21 @@ helm upgrade ...
 
 # 3. Clean up old image tags after pods have migrated to new image
 ./image-cleanup.sh -i &lt;new-image:tag&gt;</code></pre>
+<h3>Typical Workflow for Nightly Builds</h3>
+<p>When running nightly builds, several dated image tags accumulate alongside the floating nightly tag. Pull the tags you want on nodes and keep only those during cleanup — everything else is removed.</p>
+<pre><code># Pull the latest nightly (floating tag) and the two most recent dated tags
+./image-pull.sh \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260428 \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260427 \
+  -b 3
+
+# Clean up — keep the same three tags; remove all others
+./image-cleanup.sh \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260428 \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260427</code></pre>
+<p>Both the image-pull and image-cleanup actions in lobot-tui support selecting multiple tags simultaneously via their tag multi-select field.</p>
 <hr />
 <h2>image-cleanup.sh</h2>
 <h3>Purpose</h3>
@@ -350,6 +365,7 @@ helm upgrade ...
 <li>Deploys a DaemonSet using <code>alpine:latest</code> (starts in seconds, no large pull) with <code>nodeAffinity</code> to target or exclude specific nodes (offline and control-plane nodes are always excluded from the DaemonSet affinity)</li>
 <li>Each pod uses <code>nsenter</code> to run <code>ctr images ls</code> and <code>ctr images rm</code> directly against the host containerd</li>
 <li>For each image tag removed, also removes the corresponding <code>sha256:</code> digest reference — this is critical for actual blob GC and disk space recovery</li>
+<li>Waits 10 seconds for containerd's automatic garbage collector to reclaim freed blobs before sampling the after-cleanup disk stats</li>
 <li>Collects logs from all pods and reports results</li>
 <li>Deletes the DaemonSet and ConfigMap on completion</li>
 </ol>
@@ -414,6 +430,7 @@ Filesystem      Size  Used Avail Use% Mounted on
 <pre><code>docker.io/repo/image:tag          → named tag reference
 sha256:d96404f136cf...            → digest reference</code></pre>
 <p>Both point to the same manifest digest and underlying blobs. Removing only the named tag leaves the digest reference intact, which pins the blobs in containerd's content store. The blobs will not be freed until ALL references pointing to that manifest are removed. This is why a <code>ctr images rm</code> of a named tag followed by a re-pull shows <code>already exists</code> for all layers — the data never actually left disk.</p>
+<p>After removing both references, containerd's garbage collector runs automatically in the background and reclaims the freed layer blobs. The cleanup script waits 10 seconds before sampling disk usage to allow the GC to complete. There is no <code>ctr content gc</code> CLI command to force this — GC is internal to the containerd daemon and triggered automatically once all references are cleared.</p>
 <h3>Email Notifications</h3>
 <p>The email configuration block is identical to the one in <code>image-pull.sh</code> — see above for the full variable reference. The subject line format for <code>image-cleanup.sh</code>:</p>
 <ul>
@@ -487,8 +504,6 @@ kubectl get pods -n kube-system | grep ^dry-run-check- | \
 <p>The cleanup DaemonSet waits up to 120 seconds for all pods to reach <code>Ready</code> before proceeding. On a busy cluster this may not be enough. If you see the <code>WARNING: Not all pods became ready</code> message frequently, increase <code>DS_READY_TIMEOUT</code> at the top of the script.</p>
 <hr />
 <h2>Potential Improvements</h2>
-<h3>Automatic digest ref discovery</h3>
-<p>The script removes digest refs that share a manifest digest with the named tag being removed. A more thorough approach would also check for <code>sha256:</code>-prefixed refs in the <code>default</code> containerd namespace, which these scripts do not currently touch.</p>
 <h3>Slack notification</h3>
 <p>Post a summary to a Slack channel on completion, particularly useful for the in-use image report so admins can proactively reach out to affected users.</p>
 <h3>Scheduled execution</h3>

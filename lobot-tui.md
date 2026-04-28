@@ -538,53 +538,69 @@ Pre-pulls a container image across all cluster nodes in controlled batches. This
 
 | Field | Type | Description | Default |
 |-------|------|-------------|---------|
-| Image | Text + tag dropdown | DockerHub repository name | `queensschoolofcomputingdocker/gpu-jupyter-latest` |
-| Tag | Dropdown | Available tags fetched live from DockerHub, newest first | — |
-| Use latest tag (`--latest`) | Checkbox | Pull the most recently pushed tag; selecting a tag from the dropdown unchecks this automatically | ✓ (checked) |
+| Image repo | Text | DockerHub repository name | `queensschoolofcomputingdocker/gpu-jupyter-latest` |
+| Tags to PULL | Multi-select list | Available tags fetched live from DockerHub, newest first; select one or more to pull | none selected |
+| Use latest tag (`--latest`) | Checkbox | Pull the most recently pushed tag instead of selecting from the list; disables and ignores the tag list | ✓ (checked) |
 | Batch size | Text | Nodes pulling simultaneously | `3` |
 | Timeout (seconds) | Text | Per-node timeout | `1200` |
 | Exclude nodes | Multi-select | Worker nodes to skip (control plane always excluded by the script) | none |
-| Single target node (`-n`) | Dropdown | Target one specific node (includes control plane — useful for updating it explicitly); overrides exclude list | All nodes |
+| Target specific nodes | Multi-select | Check only the nodes to run on; leave all unchecked to target all worker nodes. TUI computes the exclude list automatically. | none (all nodes) |
 | Dry run | Checkbox | Preview without pulling | ✓ (checked) |
 
-> **Tag dropdown**: tags are loaded asynchronously from DockerHub when the wizard opens, sorted newest-first by the `YYYYMMDD` date code embedded in the tag name. If `Use latest tag` is checked, the dropdown is greyed out and `--latest` is passed to the script. Selecting a tag automatically unchecks `Use latest tag`.
+> **Tag list**: tags are loaded asynchronously from DockerHub when the wizard opens, sorted newest-first by the `YYYYMMDD` date code embedded in the tag name. Check one or more tags to pull them all in the same run. If `Use latest tag` is checked, the tag list is greyed out and `--latest` is passed to the script instead.
 
-> **Node fields**: `Single target node` and `Exclude nodes` are mutually exclusive in the script — if a single node is selected, the exclude list is ignored.
+> **Node targeting**: `Target specific nodes` and `Exclude nodes` are mutually exclusive — if any node is checked in `Target specific nodes`, the exclude list is ignored. The TUI converts checked target nodes to an equivalent `-e` exclude list passed to the script.
 
 > **View Docs**: press `d` in the wizard to open `IMAGE-MANAGEMENT.md` in the guide viewer without leaving the dialog.
 
-Generated command example:
+Generated command examples:
 ```bash
+# --latest flag (Use latest tag checked)
 bash image-pull.sh -i queensschoolofcomputingdocker/gpu-jupyter-latest \
   -b 3 -t 1200 -e lobot-dev.cs.queensu.ca --latest --yes
-```
 
-Or, with a specific tag and target node:
-```bash
-bash image-pull.sh -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-20260313 \
-  -b 3 -t 1200 -n gpu3 --yes
+# Multiple specific tags selected
+bash image-pull.sh \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260428 \
+  -b 3 -t 1200 -e lobot-dev.cs.queensu.ca --yes
+
+# Target two specific nodes (TUI inverts to -e for all others)
+bash image-pull.sh \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly \
+  -b 3 -t 1200 -e lobot-dev.cs.queensu.ca,newcluster-gpunode3,newcluster-gpunode4 --yes
 ```
 
 ### `[2]` image-cleanup
 
-Removes old image tags from all nodes while protecting images in use by running pods. The tag to **keep** is selected from a DockerHub dropdown.
+Removes old image tags from all nodes while protecting images in use by running pods. Select one or more tags to **keep** — everything else is removed.
 
 **Wizard fields:**
 
 | Field | Type | Description | Default |
 |-------|------|-------------|---------|
-| Image to KEEP | Text + tag dropdown | Tag to retain; all others removed | `queensschoolofcomputingdocker/gpu-jupyter-latest` |
-| Tag | Dropdown | Available tags from DockerHub, newest first | — |
+| Image repo | Text | DockerHub repository name | `queensschoolofcomputingdocker/gpu-jupyter-latest` |
+| Tags to KEEP | Multi-select list | Available tags from DockerHub, newest first; select all tags to retain | none selected |
 | Exclude nodes | Multi-select | Worker nodes to skip | none |
-| Single target node (`-n`) | Dropdown | Target one specific node (includes control plane) | All nodes |
+| Target specific nodes | Multi-select | Check only the nodes to run on; leave all unchecked to target all worker nodes | none (all nodes) |
 | Dry run | Checkbox | Preview without removing | ✓ (checked) |
+
+> **Tag list**: check all tags you want to preserve. Any tag of the same image not in the list will be removed from every targeted node, subject to in-use protection. For nightly builds, keep the floating tag plus the N most recent dated tags.
 
 Press `d` in the wizard to open `IMAGE-MANAGEMENT.md` in the guide viewer without leaving the dialog.
 
-Generated command example:
+Generated command examples:
 ```bash
+# Keep one tag
 bash image-cleanup.sh \
-  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-20260313 \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly \
+  -e lobot-dev.cs.queensu.ca --yes
+
+# Keep floating nightly + two dated tags (typical nightly workflow)
+bash image-cleanup.sh \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260428 \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260427 \
   -e lobot-dev.cs.queensu.ca --yes
 ```
 

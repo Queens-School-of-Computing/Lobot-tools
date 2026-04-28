@@ -772,21 +772,21 @@ python3 -m lobot_tui</code></pre>
 </thead>
 <tbody>
 <tr>
-<td>Image</td>
-<td>Text + tag dropdown</td>
+<td>Image repo</td>
+<td>Text</td>
 <td>DockerHub repository name</td>
 <td><code>queensschoolofcomputingdocker/gpu-jupyter-latest</code></td>
 </tr>
 <tr>
-<td>Tag</td>
-<td>Dropdown</td>
-<td>Available tags fetched live from DockerHub, newest first</td>
-<td>—</td>
+<td>Tags to PULL</td>
+<td>Multi-select list</td>
+<td>Available tags fetched live from DockerHub, newest first; select one or more to pull</td>
+<td>none selected</td>
 </tr>
 <tr>
 <td>Use latest tag (<code>--latest</code>)</td>
 <td>Checkbox</td>
-<td>Pull the most recently pushed tag; selecting a tag from the dropdown unchecks this automatically</td>
+<td>Pull the most recently pushed tag instead of selecting from the list; disables and ignores the tag list</td>
 <td>✓ checked</td>
 </tr>
 <tr>
@@ -808,10 +808,10 @@ python3 -m lobot_tui</code></pre>
 <td>none</td>
 </tr>
 <tr>
-<td>Single target node (<code>-n</code>)</td>
-<td>Dropdown</td>
-<td>Target one specific node (includes control plane — useful for updating it explicitly); overrides exclude list</td>
-<td>All nodes</td>
+<td>Target specific nodes</td>
+<td>Multi-select</td>
+<td>Check only the nodes to run on; leave all unchecked to target all worker nodes. TUI computes the exclude list automatically.</td>
+<td>none (all nodes)</td>
 </tr>
 <tr>
 <td>Dry run</td>
@@ -821,17 +821,21 @@ python3 -m lobot_tui</code></pre>
 </tr>
 </tbody>
 </table>
-<p><strong>Tag dropdown:</strong> tags are loaded asynchronously from DockerHub when the wizard opens, sorted newest-first by the <code>YYYYMMDD</code> date code embedded in the tag name. If <code>Use latest tag</code> is checked, the dropdown is greyed out and <code>--latest</code> is passed to the script. Selecting a tag automatically unchecks <code>Use latest tag</code>.</p>
-<p><strong>Node fields:</strong> <code>Single target node</code> and <code>Exclude nodes</code> are mutually exclusive in the script — if a single node is selected, the exclude list is ignored.</p>
+<p><strong>Tag list:</strong> tags are loaded asynchronously from DockerHub when the wizard opens, sorted newest-first by the <code>YYYYMMDD</code> date code embedded in the tag name. Check one or more tags to pull them all in the same run. If <code>Use latest tag</code> is checked, the tag list is greyed out and <code>--latest</code> is passed to the script instead.</p>
+<p><strong>Node targeting:</strong> <code>Target specific nodes</code> and <code>Exclude nodes</code> are mutually exclusive — if any node is checked in <code>Target specific nodes</code>, the exclude list is ignored. The TUI converts checked target nodes to an equivalent <code>-e</code> exclude list passed to the script.</p>
 <p>Press <code>d</code> in the wizard to open <code>IMAGE-MANAGEMENT.md</code> in the guide viewer without leaving the dialog.</p>
-<p>Generated command example:</p>
-<pre><code>bash image-pull.sh -i queensschoolofcomputingdocker/gpu-jupyter-latest \
-  -b 3 -t 1200 -e lobot-dev.cs.queensu.ca --latest --yes</code></pre>
-<p>Or, with a specific tag and target node:</p>
-<pre><code>bash image-pull.sh -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-20260313 \
-  -b 3 -t 1200 -n gpu3 --yes</code></pre>
+<p>Generated command examples:</p>
+<pre><code># --latest flag (Use latest tag checked)
+bash image-pull.sh -i queensschoolofcomputingdocker/gpu-jupyter-latest \
+  -b 3 -t 1200 -e lobot-dev.cs.queensu.ca --latest --yes
+
+# Multiple specific tags selected
+bash image-pull.sh \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260428 \
+  -b 3 -t 1200 -e lobot-dev.cs.queensu.ca --yes</code></pre>
 <h3>[2] image-cleanup</h3>
-<p>Removes old image tags from all nodes while protecting images in use by running pods. The tag to <strong>keep</strong> is selected from a DockerHub dropdown.</p>
+<p>Removes old image tags from all nodes while protecting images in use by running pods. Select one or more tags to <strong>keep</strong> — everything else is removed.</p>
 <table>
 <thead>
 <tr>
@@ -843,16 +847,16 @@ python3 -m lobot_tui</code></pre>
 </thead>
 <tbody>
 <tr>
-<td>Image to KEEP</td>
-<td>Text + tag dropdown</td>
-<td>Tag to retain; all others removed</td>
+<td>Image repo</td>
+<td>Text</td>
+<td>DockerHub repository name</td>
 <td><code>queensschoolofcomputingdocker/gpu-jupyter-latest</code></td>
 </tr>
 <tr>
-<td>Tag</td>
-<td>Dropdown</td>
-<td>Available tags from DockerHub, newest first</td>
-<td>—</td>
+<td>Tags to KEEP</td>
+<td>Multi-select list</td>
+<td>Available tags from DockerHub, newest first; select all tags to retain</td>
+<td>none selected</td>
 </tr>
 <tr>
 <td>Exclude nodes</td>
@@ -861,10 +865,10 @@ python3 -m lobot_tui</code></pre>
 <td>none</td>
 </tr>
 <tr>
-<td>Single target node (<code>-n</code>)</td>
-<td>Dropdown</td>
-<td>Target one specific node (includes control plane)</td>
-<td>All nodes</td>
+<td>Target specific nodes</td>
+<td>Multi-select</td>
+<td>Check only the nodes to run on; leave all unchecked to target all worker nodes</td>
+<td>none (all nodes)</td>
 </tr>
 <tr>
 <td>Dry run</td>
@@ -874,10 +878,19 @@ python3 -m lobot_tui</code></pre>
 </tr>
 </tbody>
 </table>
+<p><strong>Tag list:</strong> check all tags you want to preserve. Any tag of the same image not in the list will be removed from every targeted node, subject to in-use protection. For nightly builds, keep the floating tag plus the N most recent dated tags.</p>
 <p>Press <code>d</code> in the wizard to open <code>IMAGE-MANAGEMENT.md</code> in the guide viewer without leaving the dialog.</p>
-<p>Generated command example:</p>
-<pre><code>bash image-cleanup.sh \
-  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-20260313 \
+<p>Generated command examples:</p>
+<pre><code># Keep one tag
+bash image-cleanup.sh \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly \
+  -e lobot-dev.cs.queensu.ca --yes
+
+# Keep floating nightly + two dated tags (typical nightly workflow)
+bash image-cleanup.sh \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260428 \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260427 \
   -e lobot-dev.cs.queensu.ca --yes</code></pre>
 <h3>[3] apply-config</h3>
 <p>Pulls the JupyterHub Helm config template from the <code>main</code> GitHub branch, substitutes secrets from the existing config, and writes the output files. Runs <code>bash apply-config.sh</code> on the control plane.</p>
