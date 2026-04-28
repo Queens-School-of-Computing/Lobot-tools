@@ -253,26 +253,50 @@ helm upgrade ...
 ### Typical Workflow for Nightly Builds
 
 When running nightly builds, several dated image tags accumulate alongside the
-floating nightly tag. Pull the tags you want on nodes and keep only those during
-cleanup — everything else is removed.
+floating nightly tag. Pull the tags you want on the target nodes and keep only
+those during cleanup — everything else is removed.
+
+> **Tip:** Use lobot-tui actions `[1]` and `[2]` to build these commands
+> interactively. The multi-select tag picker and node exclude field generate the
+> correct flags automatically. Copy the resulting command from the lobot-tui
+> log for future reference or scripting.
+
+#### All versions, multiple target nodes — one command each
+
+When multiple Dockerfile versions are active, combine all tags into a single
+command and use `-e` to exclude every node that should *not* receive the pull.
+The example below pulls both the CUDA 13.0.2 (debwewin) and CUDA 13.2.1
+(duotronic) nightlies in one pass, excluding all other cluster nodes:
 
 ```bash
-# Pull the latest nightly (floating tag) and the two most recent dated tags
+# Pull — all tags for both versions; exclude all nodes except debwewin and duotronic
 ./image-pull.sh \
-  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly \
-  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260428 \
-  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260427 \
-  -b 3
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260424 \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260424-nightly \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260313 \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260313-nightly \
+  -b 3 -t 1200 \
+  -e bootstrap,floppy,fz1,fz2,giza,kickstart,lobot-a16-1,makemake,netfusion,newtek,pluto,titan \
+  --yes
 
-# Clean up — keep the same three tags; remove all others
+# Cleanup — keep same tags; remove all others from debwewin and duotronic
 ./image-cleanup.sh \
-  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly \
-  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260428 \
-  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-...-nightly-20260427
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260424 \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260424-nightly \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260313 \
+  -i queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260313-nightly \
+  -e bootstrap,floppy,fz1,fz2,giza,kickstart,lobot-a16-1,makemake,netfusion,newtek,pluto,titan \
+  --yes
 ```
 
-Both the image-pull and image-cleanup actions in lobot-tui support selecting
-multiple tags simultaneously via their tag multi-select field.
+The `-e` exclude list is the inverse of the target node list — easier to manage
+than running once per node when only a few nodes are receiving nightly builds.
+
+> **Note:** `image-cleanup.sh` identifies images to remove using only the base
+> image name (`gpu-jupyter-latest`) — not the full tag string. This means a
+> single cleanup invocation handles all CUDA/TF version variants in one pass.
+> Pass the complete keep-list via `-i` flags; everything else matching
+> `gpu-jupyter-latest` on those nodes is removed.
 
 ---
 
