@@ -148,7 +148,8 @@ class ActionWizardScreen(ModalScreen):
             id=f"field-{f.name}-repo",
             classes="wizard-input",
         )
-        yield Label("Tags to KEEP (loading…)", id=f"lbl-{f.name}-tag", classes="wizard-field-label")
+        verb = "PULL" if self._action.name == "image-pull" else "KEEP"
+        yield Label(f"Tags to {verb} (loading…)", id=f"lbl-{f.name}-tag", classes="wizard-field-label")
         yield SelectionList(id=f"field-{f.name}-tags", classes="wizard-selection-list")
 
     def _compose_node_exclude(self, f: ActionField):
@@ -285,7 +286,8 @@ class ActionWizardScreen(ModalScreen):
                 sel_list.add_option(item)
             try:
                 lbl = self.query_one(f"#{label_id}", Label)
-                lbl.update("Tags to KEEP (select one or more)")
+                verb = "PULL" if self._action.name == "image-pull" else "KEEP"
+                lbl.update(f"Tags to {verb} (select one or more)")
             except Exception:
                 pass
         except Exception as exc:
