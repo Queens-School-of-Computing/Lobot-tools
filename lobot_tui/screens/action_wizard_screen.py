@@ -47,15 +47,14 @@ class ActionWizardScreen(ModalScreen):
         self._action = action
         self._locked = TOOLS_LOCKED
         # Pre-fetch nodes synchronously (kubectl is local, fast)
-        has_node_field = any(f.field_type in ("node_exclude", "node_single") for f in action.fields)
+        has_node_field = any(
+            f.field_type in ("node_exclude", "node_single", "node_target")
+            for f in action.fields
+        )
         if has_node_field:
-            # Workers only (for exclude lists — CP is auto-excluded by the scripts)
             self._worker_nodes = get_worker_nodes(CONTROL_PLANE, include_control_plane=False)
-            # All nodes including CP (for single-target — user may need to update CP explicitly)
-            self._all_nodes = get_worker_nodes(CONTROL_PLANE, include_control_plane=True)
         else:
             self._worker_nodes = []
-            self._all_nodes = []
 
     # ── Layout ────────────────────────────────────────────────────────────────
 
@@ -79,8 +78,8 @@ class ActionWizardScreen(ModalScreen):
                     yield from self._compose_multi_tag_select(f)
                 elif f.field_type == "node_exclude":
                     yield from self._compose_node_exclude(f)
-                elif f.field_type == "node_single":
-                    yield from self._compose_node_single(f)
+                elif f.field_type == "node_target":
+                    yield from self._compose_node_target(f)
                 else:
                     yield Label(
                         f.label + (" *" if f.required else ""), classes="wizard-field-label"
@@ -169,22 +168,19 @@ class ActionWizardScreen(ModalScreen):
                 markup=True,
             )
 
-    def _compose_node_single(self, f: ActionField):
-        """Yield label + Select (single) for the -n node field.
-        Includes the control plane so the user can explicitly target it."""
-        yield Label(f"{f.label} (leave blank for all nodes)", classes="wizard-field-label")
-        if self._all_nodes:
-            # First option has value "" so _collect_values gets a plain empty string —
-            # avoids relying on Select.BLANK sentinel comparisons entirely.
-            options = [("All nodes (default)", "")] + [(node, node) for node in self._all_nodes]
-            yield Select(
-                options,
-                id=f"field-{f.name}",
-                classes="wizard-select",
-            )
+    def _compose_node_target(self, f: ActionField):
+        """Yield label + SelectionList for targeting specific nodes.
+        Leave all unchecked to run on all worker nodes."""
+        yield Label(
+            f"{f.label} (leave all unchecked to run on all nodes)",
+            classes="wizard-field-label",
+        )
+        if self._worker_nodes:
+            items = [(node, node, False) for node in self._worker_nodes]
+            yield SelectionList(*items, id=f"field-{f.name}", classes="wizard-selection-list")
         else:
             yield Static(
-                "[dim]No nodes found via kubectl[/]",
+                "[dim]No worker nodes found via kubectl[/]",
                 id=f"field-{f.name}",
                 classes="wizard-field-label",
                 markup=True,
@@ -416,14 +412,17 @@ class ActionWizardScreen(ModalScreen):
                 except Exception:
                     values[f.name] = ""
 
-            elif f.field_type == "node_single":
+            elif f.field_type == "node_target":
                 try:
-                    sel = self.query_one(f"#field-{f.name}", Select)
-                    v = sel.value
-                    # Value is "" for "All nodes (default)" or a node name string;
-                    # also guard against any BLANK sentinel leaking through.
-                    values[f.name] = "" if (_is_blank(v) or str(v) == "") else str(v)
+                    sel_list = self.query_one(f"#field-{f.name}", SelectionList)
+                    selected = [str(v) for v in sel_list.selected]
                 except Exception:
+                    selected = []
+                if selected:
+                    # Invert: pass all workers NOT in the target set as -e excludes
+                    excluded = [n for n in self._worker_nodes if n not in selected]
+                    values[f.name] = ",".join(excluded)
+                else:
                     values[f.name] = ""
 
             elif f.field_type == "checkbox":

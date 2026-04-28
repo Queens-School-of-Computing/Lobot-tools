@@ -30,8 +30,8 @@ class ActionField:
     #   "checkbox"         — Checkbox widget; default "true"/"false"; value stored as bool
     #   "tag_select"       — image-name Input + async tag Select combo (single tag)
     #   "multi_tag_select" — image-name Input + async SelectionList combo (multiple tags); value is list[str]
-    #   "node_exclude"     — text Input + "Pick…" button (multi-select, comma-sep)
-    #   "node_single"      — text Input + "Pick…" button (single node, -n flag)
+    #   "node_exclude"     — SelectionList; checked nodes passed as -e (skip these nodes)
+    #   "node_target"      — SelectionList; checked nodes = target only these; inverts to -e for all others
 
 
 @dataclass
@@ -59,9 +59,9 @@ def _image_pull_cmd(values: dict) -> list:
     cmd += ["-b", batch]
     timeout = values.get("timeout", "1200").strip() or "1200"
     cmd += ["-t", timeout]
-    node = values.get("node", "").strip()
-    if node:
-        cmd += ["-n", node]
+    node_target = values.get("node", "").strip()
+    if node_target:
+        cmd += ["-e", node_target]
     else:
         exclude = values.get("exclude", CONTROL_PLANE).strip()
         if exclude:
@@ -78,9 +78,9 @@ def _image_cleanup_cmd(values: dict) -> list:
     cmd = ["bash", "image-cleanup.sh"]
     for img in values["images"]:
         cmd += ["-i", img]
-    node = values.get("node", "").strip()
-    if node:
-        cmd += ["-n", node]
+    node_target = values.get("node", "").strip()
+    if node_target:
+        cmd += ["-e", node_target]
     else:
         exclude = values.get("exclude", CONTROL_PLANE).strip()
         if exclude:
@@ -145,7 +145,7 @@ ACTIONS: list = [
                 "exclude", "Exclude nodes", CONTROL_PLANE, required=False, field_type="node_exclude"
             ),
             ActionField(
-                "node", "Single target node (-n)", "", required=False, field_type="node_single"
+                "node", "Target specific nodes", "", required=False, field_type="node_target"
             ),
             ActionField(
                 "use_latest", "Use --latest", "true", required=False, field_type="checkbox"
@@ -174,7 +174,7 @@ ACTIONS: list = [
                 "exclude", "Exclude nodes", CONTROL_PLANE, required=False, field_type="node_exclude"
             ),
             ActionField(
-                "node", "Single target node (-n)", "", required=False, field_type="node_single"
+                "node", "Target specific nodes", "", required=False, field_type="node_target"
             ),
         ],
         build_command=_image_cleanup_cmd,
