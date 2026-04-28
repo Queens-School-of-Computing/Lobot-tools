@@ -322,9 +322,9 @@ class ActionWizardScreen(ModalScreen):
             pass
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
-        """Enable/disable the tag Select based on use_latest state.
-        Checked → Select disabled (grayed out, value ignored).
-        Unchecked → Select re-enabled."""
+        """Enable/disable tag widgets based on use_latest state.
+        Checked → widget disabled (grayed out, value ignored).
+        Unchecked → widget re-enabled."""
         if event.checkbox.id != "field-use_latest":
             return
         for f in self._action.fields:
@@ -332,6 +332,12 @@ class ActionWizardScreen(ModalScreen):
                 try:
                     sel = self.query_one(f"#field-{f.name}-tag", Select)
                     sel.disabled = event.value
+                except Exception:
+                    pass
+            elif f.field_type == "multi_tag_select":
+                try:
+                    sel_list = self.query_one(f"#field-{f.name}-tags", SelectionList)
+                    sel_list.disabled = event.value
                 except Exception:
                     pass
 
@@ -388,12 +394,20 @@ class ActionWizardScreen(ModalScreen):
                     repo = repo_inp.value.strip() or f.default
                 except Exception:
                     repo = f.default
+                use_latest_active = False
                 try:
-                    sel_list = self.query_one(f"#field-{f.name}-tags", SelectionList)
-                    selected = [str(v) for v in sel_list.selected]
+                    use_latest_active = self.query_one("#field-use_latest", Checkbox).value
                 except Exception:
-                    selected = []
-                values[f.name] = [v if ":" in v else f"{repo}:{v}" for v in selected]
+                    pass
+                if use_latest_active:
+                    values[f.name] = [repo]  # bare repo; command builder appends --latest
+                else:
+                    try:
+                        sel_list = self.query_one(f"#field-{f.name}-tags", SelectionList)
+                        selected = [str(v) for v in sel_list.selected]
+                    except Exception:
+                        selected = []
+                    values[f.name] = [v if ":" in v else f"{repo}:{v}" for v in selected]
 
             elif f.field_type == "node_exclude":
                 try:

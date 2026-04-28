@@ -52,7 +52,9 @@ class ActionDef:
 
 
 def _image_pull_cmd(values: dict) -> list:
-    cmd = ["bash", "image-pull.sh", "-i", values["image"]]
+    cmd = ["bash", "image-pull.sh"]
+    for img in values["images"]:
+        cmd += ["-i", img]
     batch = values.get("batch_size", "3").strip() or "3"
     cmd += ["-b", batch]
     timeout = values.get("timeout", "1200").strip() or "1200"
@@ -126,16 +128,16 @@ ACTIONS: list = [
     ActionDef(
         key="1",
         name="image-pull",
-        description="Pre-pull a container image across all cluster nodes.",
+        description="Pre-pull container images across cluster nodes.",
         needs_confirm=True,
         has_dry_run=True,
         fields=[
             ActionField(
-                "image",
-                "Image",
+                "images",
+                "Image repo / Tags to pull",
                 "queensschoolofcomputingdocker/gpu-jupyter-latest",
                 placeholder="queensschoolofcomputingdocker/gpu-jupyter-latest",
-                field_type="tag_select",
+                field_type="multi_tag_select",
             ),
             ActionField("batch_size", "Batch size", "3", required=False, placeholder="3"),
             ActionField("timeout", "Timeout (seconds)", "1200", required=False, placeholder="1200"),
