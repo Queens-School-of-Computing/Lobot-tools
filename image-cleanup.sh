@@ -661,10 +661,9 @@ cat <<DSEOF2
               fi
             done
 
-          echo "=== Running containerd garbage collection ==="
-          nsenter --mount=/proc/1/ns/mnt -- \
-            /usr/bin/ctr --namespace k8s.io content gc 2>&1
-          echo "  GC complete"
+          echo "=== Waiting for containerd GC to reclaim freed content ==="
+          sleep 10
+          echo "  (containerd GC runs automatically after refs are removed)"
 
           echo "=== Images after cleanup ==="
           nsenter --mount=/proc/1/ns/mnt -- \
