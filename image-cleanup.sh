@@ -661,6 +661,11 @@ cat <<DSEOF2
               fi
             done
 
+          echo "=== Running containerd garbage collection ==="
+          nsenter --mount=/proc/1/ns/mnt -- \
+            /usr/bin/ctr --namespace k8s.io content gc 2>&1
+          echo "  GC complete"
+
           echo "=== Images after cleanup ==="
           nsenter --mount=/proc/1/ns/mnt -- \
             /usr/bin/ctr --namespace k8s.io images ls 2>/dev/null | grep "${IMAGE_SHORT}"
