@@ -1,0 +1,30 @@
+# auto-pull-images.conf
+#
+# Each line declares one floating nightly tag to watch on DockerHub.
+# When the tag's digest changes (i.e. a new nightly was pushed), image-pull.sh
+# is triggered automatically to pre-pull the image across the subscribed nodes.
+#
+# Format:
+#   tag=<full image:tag>  [exclude=node1,node2,...]
+#
+#   tag=      Required. Full image reference including the floating nightly tag.
+#   exclude=  Optional. Comma-separated list of nodes to skip.
+#             These are passed directly to image-pull.sh's -e flag.
+#             Omit to pull on all worker nodes (control-plane is always excluded).
+#
+# Lines starting with # and blank lines are ignored.
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# Tip: to temporarily suspend auto-pull for a tag, comment out its line.
+# To force a re-pull on the next cron tick (e.g. after a failed pull or to
+# re-seed a new node), delete the tag's cache file:
+#   rm /var/lib/lobot/pull-digests/queensschoolofcomputingdocker_gpu-jupyter-latest_*nightly*
+# ──────────────────────────────────────────────────────────────────────────────
+
+# CUDA 13.0.2 / TF 2.20 / Ubuntu 24.04 — Dockerfile.20260313
+# Pull on debwewin and duotronic
+tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260313-nightly  exclude=bootstrap,floppy,fz1,fz2,giza,kickstart,lobot-a16-1,makemake,netfusion,newtek,pluto,titan
+
+# CUDA 13.2.1 / TF 2.20 / Ubuntu 24.04 — Dockerfile.20260424
+# Pull on duotronic only
+tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260424-nightly  exclude=bootstrap,debwewin,floppy,fz1,fz2,giza,kickstart,lobot-a16-1,makemake,netfusion,newtek,pluto,titan
