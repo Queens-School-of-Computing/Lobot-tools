@@ -1,12 +1,13 @@
 <h2><img class="alignnone wp-image-4487 size-full" src="http://newsocdocs.cs.queensu.ca/socdocs.wp/wp-content/uploads/2026/03/ChatGPT-Image-Mar-3-2026-05_56_15-PM.jpg" alt="" width="1536" height="1024" /></h2>
 <h2>Overview</h2>
-<p>Two bash scripts for managing large container images across a Kubernetes cluster running containerd. Designed for clusters where images are large (10GB+) and network bandwidth must be carefully managed during image operations.</p>
+<p>Three bash scripts for managing large container images across a Kubernetes cluster running containerd. Designed for clusters where images are large (10GB+) and network bandwidth must be carefully managed during image operations.</p>
 <ul>
 <li><a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/image-pull.sh" target="_blank" rel="noopener"><code>image-pull.sh</code></a> — Pre-pulls images across nodes in controlled batches to avoid saturating the network during helm upgrades</li>
 <li><a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/image-cleanup.sh" target="_blank" rel="noopener"><code>image-cleanup.sh</code></a> — Removes old image tags from all nodes while protecting images in active use by running pods</li>
+<li><a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/auto-pull-images.sh" target="_blank" rel="noopener"><code>auto-pull-images.sh</code></a> — Polls DockerHub for digest changes on configured tags and automatically triggers pulls when a new image is available</li>
 </ul>
-<p>Both scripts support <code>--dry-run</code> mode for safe pre-flight checks, and send HTML email notifications on completion via Python smtplib.</p>
-<p>Both scripts are designed to run from the cluster control plane with <code>kubectl</code> access and write log files automatically alongside their output.</p>
+<p>All scripts support <code>--dry-run</code> mode for safe pre-flight checks, and send HTML email notifications on completion via Python smtplib.</p>
+<p>All scripts are designed to run from the cluster control plane with <code>kubectl</code> access and write log files automatically alongside their output.</p>
 <hr />
 <h2>Prerequisites</h2>
 <ul>
@@ -449,8 +450,95 @@ sha256:d96404f136cf...            → digest reference</code></pre>
 <li><code>🔍 [DRY RUN] image-cleanup.sh | gpu-jupyter-latest | N node(s) checked</code></li>
 </ul>
 <hr />
+<h2>auto-pull-images.sh</h2>
+<h3>Purpose</h3>
+<p>Polls DockerHub for digest changes on a configured list of image tags and automatically triggers <code>image-pull.sh</code> when a new digest is detected. Designed to run as a cron job on the control plane so the cluster pre-fetches nightly image updates without manual intervention.</p>
+<p>A single HTML email is sent per run covering all tags that were pulled or failed. Runs where all tags are unchanged produce no email (silent).</p>
+<h3>Config File</h3>
+<p>Location: <code>/etc/lobot/auto-pull-images.conf</code></p>
+<p>One entry per tag to watch. Format:</p>
+<pre><code># tag=&lt;full image:tag&gt;  [exclude=node1,node2]
+tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260313-nightly
+tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260424-nightly  exclude=debwewin-node1,debwewin-node2</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tag=</code></td>
+<td>Full image reference including the floating nightly tag (required)</td>
+</tr>
+<tr>
+<td><code>exclude=</code></td>
+<td>Comma-separated node names to skip, passed to <code>image-pull.sh -e</code> (optional)</td>
+</tr>
+</tbody>
+</table>
+<p>Lines starting with <code>#</code> and blank lines are ignored.</p>
+<h3>Usage</h3>
+<pre><code>./auto-pull-images.sh [--dry-run] [--noemail] [--config &lt;path&gt;]</code></pre>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Check digests and log what would be pulled; no pulls, no cache updates, no email</td>
+</tr>
+<tr>
+<td><code>--noemail</code></td>
+<td>Suppress email even if pulls occur</td>
+</tr>
+<tr>
+<td><code>--config &lt;path&gt;</code></td>
+<td>Override config file location (default: <code>/etc/lobot/auto-pull-images.conf</code>)</td>
+</tr>
+</tbody>
+</table>
+<h3>How It Works</h3>
+<ol>
+<li>For each <code>tag=</code> entry in the config, query the DockerHub API for the tag's current manifest digest</li>
+<li>Compare to the cached digest stored in <code>/var/lib/lobot/pull-digests/</code> (one file per tag)</li>
+<li>If the digest has changed (or no cache exists yet): run <code>image-pull.sh -i &lt;tag&gt; --yes --noemail [-e &lt;excludes&gt;]</code>
+<ul>
+<li>On success: write the new digest to the cache file</li>
+<li>On failure: leave cache unchanged so the next poll retries</li>
+</ul>
+</li>
+<li>After processing all tags, send one HTML email if anything was pulled or failed</li>
+</ol>
+<h3>Digest Cache</h3>
+<p>Cached digests are stored in <code>/var/lib/lobot/pull-digests/</code> with one file per tag. The filename is the image reference with <code>/</code> and <code>:</code> replaced by <code>_</code>. The directory is created automatically on first run.</p>
+<p>To force a re-pull on the next cron tick, delete the relevant cache file:</p>
+<pre><code>rm /var/lib/lobot/pull-digests/queensschoolofcomputingdocker_gpu-jupyter-latest_*nightly*</code></pre>
+<h3>Email Notifications</h3>
+<p>Email configuration is at the top of the script — same variables as <code>image-pull.sh</code> (see above for the full reference). Subject line format:</p>
+<ul>
+<li><code>✅ Auto-pull complete | N pulled | YYYY-MM-DD</code></li>
+<li><code>❌ Auto-pull FAILED | N pulled, N failed | YYYY-MM-DD</code></li>
+</ul>
+<p>Email is <strong>not</strong> sent when all tags are unchanged (silent run). <code>image-pull.sh</code> is always invoked with <code>--noemail</code> so only one consolidated email is sent per auto-pull run.</p>
+<h3>Cron Setup</h3>
+<pre><code># Check for updated nightly images every hour
+0 * * * * /opt/Lobot/tools/auto-pull-images.sh &gt;&gt; /var/log/lobot-autopull.log 2&gt;&amp;1</code></pre>
+<p>Nightly builds typically complete around 3–4am; the next top-of-hour tick after the build finishes will detect the new digest and trigger the pull automatically.</p>
+<h3>Manual Trigger</h3>
+<pre><code># Dry-run to preview what would be pulled
+/opt/Lobot/tools/auto-pull-images.sh --dry-run
+
+# Live run (will pull and update cache)
+/opt/Lobot/tools/auto-pull-images.sh</code></pre>
+<hr />
 <h2>Log Files</h2>
-<p>Both scripts write log files automatically to <code>$LOBOT_CLUSTER_DIR/logs/</code> (default: <code>/opt/Lobot/logs/</code>). The directory is created automatically if it does not exist.</p>
+<p>All three scripts write log files automatically to <code>$LOBOT_CLUSTER_DIR/logs/</code> (default: <code>/opt/Lobot/logs/</code>). The directory is created automatically if it does not exist.</p>
 <table>
 <thead>
 <tr>
@@ -469,6 +557,11 @@ sha256:d96404f136cf...            → digest reference</code></pre>
 <td><code>image-cleanup.sh</code></td>
 <td><code>logs/cleanup-results-YYYYMMDD-HHMMSS.log</code></td>
 <td><code>logs/cleanup-dryrun-YYYYMMDD-HHMMSS.log</code></td>
+</tr>
+<tr>
+<td><code>auto-pull-images.sh</code></td>
+<td><code>logs/auto-pull-YYYYMMDD-HHMMSS.log</code></td>
+<td><code>logs/auto-pull-dryrun-YYYYMMDD-HHMMSS.log</code></td>
 </tr>
 </tbody>
 </table>
@@ -516,8 +609,6 @@ kubectl get pods -n kube-system | grep ^dry-run-check- | \
 <h2>Potential Improvements</h2>
 <h3>Slack notification</h3>
 <p>Post a summary to a Slack channel on completion, particularly useful for the in-use image report so admins can proactively reach out to affected users.</p>
-<h3>Scheduled execution</h3>
-<p>Wrap both scripts in a CronJob or systemd timer that automatically runs cleanup after each helm upgrade, using the new image tag extracted from the helm release.</p>
 <h3>Parallel log collection</h3>
 <p>The cleanup script currently collects logs from nodes sequentially in STEP 4. For large clusters (20+ nodes) this adds meaningful wall-clock time. Logs could be collected in parallel with background jobs and results assembled at the end.</p>
 

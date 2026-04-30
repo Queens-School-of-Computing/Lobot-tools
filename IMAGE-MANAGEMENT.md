@@ -2,17 +2,18 @@
 ![Lobot Cluster Management](https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/assets/images/cleanpullbanner.jpg)
 ## Overview
 
-Two bash scripts for managing large container images across a Kubernetes cluster
+Three bash scripts for managing large container images across a Kubernetes cluster
 running containerd. Designed for clusters where images are large (10GB+) and
 network bandwidth must be carefully managed during image operations.
 
 - **[`image-pull.sh`](https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/image-pull.sh)** — Pre-pulls images across nodes in controlled batches to avoid saturating the network during helm upgrades
 - **[`image-cleanup.sh`](https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/image-cleanup.sh)** — Removes old image tags from all nodes while protecting images in active use by running pods
+- **[`auto-pull-images.sh`](https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/auto-pull-images.sh)** — Polls DockerHub for digest changes on configured tags and automatically triggers pulls when a new image is available
 
-Both scripts support `--dry-run` mode for safe pre-flight checks, and send HTML
+All scripts support `--dry-run` mode for safe pre-flight checks, and send HTML
 email notifications on completion via Python smtplib.
 
-Both scripts are designed to run from the cluster control plane with `kubectl`
+All scripts are designed to run from the cluster control plane with `kubectl`
 access and write log files automatically alongside their output.
 
 ---
@@ -507,14 +508,116 @@ above for the full variable reference. The subject line format for
 
 ---
 
+## auto-pull-images.sh
+
+### Purpose
+
+Polls DockerHub for digest changes on a configured list of image tags and
+automatically triggers `image-pull.sh` when a new digest is detected. Designed
+to run as a cron job on the control plane so the cluster pre-fetches nightly
+image updates without manual intervention.
+
+A single HTML email is sent per run covering all tags that were pulled or
+failed. Runs where all tags are unchanged produce no email (silent).
+
+### Config File
+
+**Location:** `/etc/lobot/auto-pull-images.conf`
+
+One entry per tag to watch. Format:
+
+```
+# tag=<full image:tag>  [exclude=node1,node2]
+tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260313-nightly
+tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260424-nightly  exclude=debwewin-node1,debwewin-node2
+```
+
+| Field | Description |
+|-------|-------------|
+| `tag=` | Full image reference including the floating nightly tag (required) |
+| `exclude=` | Comma-separated node names to skip, passed to `image-pull.sh -e` (optional) |
+
+Lines starting with `#` and blank lines are ignored.
+
+### Usage
+
+```bash
+./auto-pull-images.sh [--dry-run] [--noemail] [--config <path>]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Check digests and log what would be pulled; no pulls, no cache updates, no email |
+| `--noemail` | Suppress email even if pulls occur |
+| `--config <path>` | Override config file location (default: `/etc/lobot/auto-pull-images.conf`) |
+
+### How It Works
+
+1. For each `tag=` entry in the config, query the DockerHub API for the tag's current manifest digest
+2. Compare to the cached digest stored in `/var/lib/lobot/pull-digests/` (one file per tag)
+3. If the digest has changed (or no cache exists yet):
+   - Run `image-pull.sh -i <tag> --yes --noemail [-e <excludes>]`
+   - On success: write the new digest to the cache file
+   - On failure: leave cache unchanged so the next poll retries
+4. After processing all tags, send one HTML email if anything was pulled or failed
+
+### Digest Cache
+
+Cached digests are stored in `/var/lib/lobot/pull-digests/` with one file per
+tag. The filename is the image reference with `/` and `:` replaced by `_`.
+The directory is created automatically on first run.
+
+To force a re-pull on the next cron tick, delete the relevant cache file:
+
+```bash
+rm /var/lib/lobot/pull-digests/queensschoolofcomputingdocker_gpu-jupyter-latest_*nightly*
+```
+
+### Email Notifications
+
+Email configuration is at the top of the script — same variables as
+`image-pull.sh` (see above for the full reference). Subject line format:
+
+- `✅ Auto-pull complete | N pulled | YYYY-MM-DD`
+- `❌ Auto-pull FAILED | N pulled, N failed | YYYY-MM-DD`
+
+Email is **not** sent when all tags are unchanged (silent run). `image-pull.sh`
+is always invoked with `--noemail` so only one consolidated email is sent per
+auto-pull run.
+
+### Cron Setup
+
+Add to the control plane's crontab:
+
+```bash
+# Check for updated nightly images every hour
+0 * * * * /opt/Lobot/tools/auto-pull-images.sh >> /var/log/lobot-autopull.log 2>&1
+```
+
+Nightly builds typically complete around 3–4am; the next top-of-hour tick after
+the build finishes will detect the new digest and trigger the pull automatically.
+
+### Manual Trigger
+
+```bash
+# Dry-run to preview what would be pulled
+/opt/Lobot/tools/auto-pull-images.sh --dry-run
+
+# Live run (will pull and update cache)
+/opt/Lobot/tools/auto-pull-images.sh
+```
+
+---
+
 ## Log Files
 
-Both scripts write log files automatically to `$LOBOT_CLUSTER_DIR/logs/` (default: `/opt/Lobot/logs/`). The directory is created automatically if it does not exist.
+All three scripts write log files automatically to `$LOBOT_CLUSTER_DIR/logs/` (default: `/opt/Lobot/logs/`). The directory is created automatically if it does not exist.
 
 | Script | Live run log | Dry-run log |
 |--------|-------------|-------------|
 | `image-pull.sh` | `logs/pull-results-YYYYMMDD-HHMMSS.log` | `logs/pull-dryrun-YYYYMMDD-HHMMSS.log` |
 | `image-cleanup.sh` | `logs/cleanup-results-YYYYMMDD-HHMMSS.log` | `logs/cleanup-dryrun-YYYYMMDD-HHMMSS.log` |
+| `auto-pull-images.sh` | `logs/auto-pull-YYYYMMDD-HHMMSS.log` | `logs/auto-pull-dryrun-YYYYMMDD-HHMMSS.log` |
 
 Pull logs have `ctr` progress lines and ANSI escape codes stripped (these are
 only shown on the terminal). Cleanup logs are a full copy of terminal output.
@@ -626,10 +729,6 @@ before proceeding. On a busy cluster this may not be enough. If you see the
 ### Slack notification
 Post a summary to a Slack channel on completion, particularly useful for the
 in-use image report so admins can proactively reach out to affected users.
-
-### Scheduled execution
-Wrap both scripts in a CronJob or systemd timer that automatically runs cleanup
-after each helm upgrade, using the new image tag extracted from the helm release.
 
 ### Parallel log collection
 The cleanup script currently collects logs from nodes sequentially in STEP 4.
