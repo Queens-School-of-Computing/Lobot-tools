@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-CONFIG_FILE="/etc/lobot/auto-pull-images.conf"
+CONFIG_FILE="/etc/lobot/tools/auto-pull-images.conf"
 CACHE_DIR="/var/lib/lobot/pull-digests"
 TOOLS_DIR="${LOBOT_CLUSTER_DIR:-/opt/Lobot}/tools"
 LOG_DIR="${LOBOT_CLUSTER_DIR:-/opt/Lobot}/logs"
