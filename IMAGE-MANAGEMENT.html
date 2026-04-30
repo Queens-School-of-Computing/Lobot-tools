@@ -455,7 +455,7 @@ sha256:d96404f136cf...            → digest reference</code></pre>
 <p>Polls DockerHub for digest changes on a configured list of image tags and automatically triggers <code>image-pull.sh</code> when a new digest is detected. Designed to run as a cron job on the control plane so the cluster pre-fetches nightly image updates without manual intervention.</p>
 <p>A single HTML email is sent per run covering all tags that were pulled or failed. Runs where all tags are unchanged produce no email (silent).</p>
 <h3>Config File</h3>
-<p>Location: <code>/etc/lobot/auto-pull-images.conf</code></p>
+<p>Location: <code>/opt/Lobot/tools/auto-pull-images.conf</code></p>
 <p>One entry per tag to watch. Format:</p>
 <pre><code># tag=&lt;full image:tag&gt;  [exclude=node1,node2]
 tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260313-nightly

@@ -522,7 +522,7 @@ failed. Runs where all tags are unchanged produce no email (silent).
 
 ### Config File
 
-**Location:** `/etc/lobot/auto-pull-images.conf`
+**Location:** `/opt/Lobot/tools/auto-pull-images.conf`
 
 One entry per tag to watch. Format:
 
