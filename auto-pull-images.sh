@@ -42,7 +42,20 @@ else
     LOG_FILE="$LOG_DIR/auto-pull-$(date +%Y%m%d-%H%M%S).log"
 fi
 
-exec > >(tee "$LOG_FILE") 2>&1
+# log() writes to both the email log and stdout (captured by cron to syslog/file).
+# image-pull.sh output goes only to stdout — only its SUMMARY block is appended
+# to LOG_FILE so the email stays compact.
+log() { echo "$*" | tee -a "$LOG_FILE"; }
+
+log_pull_summary() {
+    local PULL_LOG="$1"
+    # Append the SUMMARY block from image-pull.sh output to our email log.
+    # Starts at the === SUMMARY === line; strips ANSI codes and layer-hash lines.
+    awk '/SUMMARY/{found=1} found{print}' "$PULL_LOG" | \
+        sed 's/\x1B\[[0-9;]*[A-Za-z]//g' | \
+        grep -v "^[a-f0-9]\{12,64\}: " | \
+        tee -a "$LOG_FILE"
+}
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 format_elapsed() {
@@ -138,9 +151,9 @@ except Exception as e:
 PYEOF
 
     if [ $? -eq 0 ]; then
-        echo " 📧 Email sent to $TO_EMAIL"
+        log " 📧 Email sent to $TO_EMAIL"
     else
-        echo " ⚠️  Email failed to send"
+        log " ⚠️  Email failed to send"
     fi
     rm -f "$BODY_FILE"
 }
@@ -158,13 +171,13 @@ build_email_body() {
     fi
 
     LOG_CONTENT=$(cat "$LOG" | \
-        sed 's/\x1B\[[0-9;]*[mGKHF]//g' | \
         sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' | \
         sed 's/✅/<span style="color:#2e7d32">✅/g' | \
         sed 's/❌/<span style="color:#c62828">❌/g' | \
         sed 's/⚠️/<span style="color:#f57f17">⚠️/g' | \
         sed 's/🔍/<span style="color:#1565c0">🔍/g' | \
         sed 's/⏭️/<span style="color:#6a1e99">⏭️/g' | \
+        sed 's/🎉/<span style="color:#2e7d32">🎉/g' | \
         awk '{print $0"</span><br>"}')
 
     cat <<BODYEOF
@@ -200,18 +213,18 @@ if [ ! -f "$IMAGE_PULL" ]; then
 fi
 
 # ── Header ─────────────────────────────────────────────────────────────────────
-echo "=========================================="
+log "=========================================="
 if [ "$DRY_RUN" = "true" ]; then
-    echo " Auto-Pull Images - DRY RUN"
+    log " Auto-Pull Images - DRY RUN"
 else
-    echo " Auto-Pull Images"
+    log " Auto-Pull Images"
 fi
-echo " $(date)"
-echo " Config:  $CONFIG_FILE"
-echo " Cache:   $CACHE_DIR"
-echo " Log:     $LOG_FILE"
-echo "=========================================="
-echo ""
+log " $(date)"
+log " Config:  $CONFIG_FILE"
+log " Cache:   $CACHE_DIR"
+log " Log:     $LOG_FILE"
+log "=========================================="
+log ""
 
 PULLED_COUNT=0
 FAILED_COUNT=0
@@ -232,24 +245,24 @@ while IFS= read -r line || [ -n "$line" ]; do
     done
 
     if [ -z "$TAG" ]; then
-        echo "⚠️  Skipping malformed config line: $line"
+        log "⚠️  Skipping malformed config line: $line"
         continue
     fi
 
-    echo "------------------------------------------"
-    echo " Tag: $TAG"
-    [ -n "$EXCLUDE" ] && echo " Exclude nodes: $EXCLUDE"
-    echo "------------------------------------------"
+    log "------------------------------------------"
+    log " Tag: $TAG"
+    [ -n "$EXCLUDE" ] && log " Exclude nodes: $EXCLUDE"
+    log "------------------------------------------"
 
     # Query DockerHub for current digest
     DIGEST_STDERR_TMP=$(mktemp)
     REMOTE_DIGEST=$(get_remote_digest "$TAG" 2>"$DIGEST_STDERR_TMP") || true
     if [ -z "$REMOTE_DIGEST" ]; then
-        echo "❌ Failed to query DockerHub for: $TAG"
-        [ -s "$DIGEST_STDERR_TMP" ] && echo "   $(cat "$DIGEST_STDERR_TMP")"
+        log "❌ Failed to query DockerHub for: $TAG"
+        [ -s "$DIGEST_STDERR_TMP" ] && log "   $(cat "$DIGEST_STDERR_TMP")"
         rm -f "$DIGEST_STDERR_TMP"
         FAILED_COUNT=$((FAILED_COUNT + 1))
-        echo ""
+        log ""
         continue
     fi
     rm -f "$DIGEST_STDERR_TMP"
@@ -261,63 +274,68 @@ while IFS= read -r line || [ -n "$line" ]; do
     [ -f "$CACHE_FILE" ] && CACHED_DIGEST=$(cat "$CACHE_FILE")
 
     if [ "$REMOTE_DIGEST" = "$CACHED_DIGEST" ]; then
-        echo "⏭️  No change (digest: ${REMOTE_DIGEST:0:19}...)"
+        log "⏭️  No change (digest: ${REMOTE_DIGEST:0:19}...)"
         SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-        echo ""
+        log ""
         continue
     fi
 
     if [ -n "$CACHED_DIGEST" ]; then
-        echo "🔍 New digest detected:"
-        echo "   was: ${CACHED_DIGEST:0:19}..."
-        echo "   now: ${REMOTE_DIGEST:0:19}..."
+        log "🔍 New digest detected:"
+        log "   was: ${CACHED_DIGEST:0:19}..."
+        log "   now: ${REMOTE_DIGEST:0:19}..."
     else
-        echo "🔍 No cached digest — first run for this tag"
-        echo "   digest: ${REMOTE_DIGEST:0:19}..."
+        log "🔍 No cached digest — first run for this tag"
+        log "   digest: ${REMOTE_DIGEST:0:19}..."
     fi
 
     if [ "$DRY_RUN" = "true" ]; then
         PULL_CMD_STR="$IMAGE_PULL -i $TAG --yes --noemail"
         [ -n "$EXCLUDE" ] && PULL_CMD_STR="$PULL_CMD_STR -e $EXCLUDE"
-        echo "   [dry-run] would run: $PULL_CMD_STR"
+        log "   [dry-run] would run: $PULL_CMD_STR"
         SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-        echo ""
+        log ""
         continue
     fi
 
-    # Trigger pull
+    # Trigger pull — full output goes to stdout (cron log); only SUMMARY
+    # is appended to LOG_FILE for the email.
     PULL_START=$(date +%s)
+    PULL_FULL_LOG=$(mktemp)
     PULL_ARGS=(-i "$TAG" --yes --noemail)
     [ -n "$EXCLUDE" ] && PULL_ARGS+=(-e "$EXCLUDE")
 
-    if "$IMAGE_PULL" "${PULL_ARGS[@]}"; then
+    if "$IMAGE_PULL" "${PULL_ARGS[@]}" 2>&1 | tee "$PULL_FULL_LOG"; then
         PULL_ELAPSED=$(( $(date +%s) - PULL_START ))
-        echo "✅ Pull complete: $TAG ($(format_elapsed $PULL_ELAPSED))"
+        log_pull_summary "$PULL_FULL_LOG"
+        log "✅ Pull complete: $TAG ($(format_elapsed $PULL_ELAPSED))"
         echo "$REMOTE_DIGEST" > "$CACHE_FILE"
         PULLED_COUNT=$((PULLED_COUNT + 1))
     else
         PULL_ELAPSED=$(( $(date +%s) - PULL_START ))
-        echo "❌ Pull failed: $TAG ($(format_elapsed $PULL_ELAPSED))"
+        log_pull_summary "$PULL_FULL_LOG"
+        log "❌ Pull failed: $TAG ($(format_elapsed $PULL_ELAPSED))"
         FAILED_COUNT=$((FAILED_COUNT + 1))
     fi
-    echo ""
+    rm -f "$PULL_FULL_LOG"
+    log ""
 
 done < "$CONFIG_FILE"
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 TOTAL_ELAPSED=$(( $(date +%s) - SCRIPT_START ))
 
-echo "=========================================="
-echo " SUMMARY - $(date)"
-echo "=========================================="
-echo " ✅ Pulled:    $PULLED_COUNT"
-echo " ❌ Failed:    $FAILED_COUNT"
-echo " ⏭️  Unchanged: $SKIPPED_COUNT"
-echo " ⏱️  Total:     $(format_elapsed $TOTAL_ELAPSED)"
-echo "=========================================="
+log "=========================================="
+log " SUMMARY - $(date)"
+log "=========================================="
+log " ✅ Pulled:    $PULLED_COUNT"
+log " ❌ Failed:    $FAILED_COUNT"
+log " ⏭️  Unchanged: $SKIPPED_COUNT"
+log " ⏱️  Total:     $(format_elapsed $TOTAL_ELAPSED)"
+log "=========================================="
 
 if [ "$DRY_RUN" = "true" ]; then
-    echo " [dry-run] No email sent."
+    log " [dry-run] No email sent."
     exit 0
 fi
 
@@ -332,7 +350,7 @@ if [ $PULLED_COUNT -gt 0 ] || [ $FAILED_COUNT -gt 0 ]; then
     fi
     send_email "$SUBJECT" "$BODY_TMP"
 else
-    echo " No changes detected — no email sent."
+    log " No changes detected — no email sent."
 fi
 
 [ $FAILED_COUNT -gt 0 ] && exit 1
