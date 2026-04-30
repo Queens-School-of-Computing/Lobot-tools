@@ -2,7 +2,7 @@
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 CONFIG_FILE="/opt/Lobot/tools/auto-pull-images.conf"
-CACHE_DIR="/var/lib/lobot/pull-digests"
+CACHE_DIR="/opt/Lobot/tools/pull-digests"
 TOOLS_DIR="${LOBOT_CLUSTER_DIR:-/opt/Lobot}/tools"
 LOG_DIR="${LOBOT_CLUSTER_DIR:-/opt/Lobot}/logs"
 
