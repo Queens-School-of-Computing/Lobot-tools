@@ -127,7 +127,7 @@
 <li>Each pod uses <code>nsenter</code> to run <code>ctr images pull</code> directly against the host containerd socket, bypassing the pod image pull mechanism entirely</li>
 <li>Streams live <code>ctr</code> pull progress to the terminal while polling pod status silently in the background</li>
 <li>After each batch completes, moves to the next batch</li>
-<li>After all batches, retries any failed nodes one at a time</li>
+<li>After all batches, retries any failed nodes up to <code>MAX_RETRIES</code> times, waiting <code>RETRY_DELAY</code> seconds between each attempt</li>
 <li>Writes a clean log file (ANSI codes and <code>ctr</code> progress lines stripped) alongside the full terminal output</li>
 </ol>
 <h3>Node Pre-Flight Checks</h3>
@@ -170,6 +170,35 @@ Filesystem      Size  Used Avail Use% Mounted on
 <p>Before launching any pods, the script prompts:</p>
 <pre><code> Proceed with pull on N node(s)? [y/N]</code></pre>
 <p>Pass <code>--yes</code> to skip the prompt for scripted or automated runs.</p>
+<h3>Retry Behavior</h3>
+<p>Three variables at the top of the script control retry behavior:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MAX_RETRIES</code></td>
+<td><code>3</code></td>
+<td>How many times to retry a failed node before giving up</td>
+</tr>
+<tr>
+<td><code>RETRY_DELAY</code></td>
+<td><code>120</code></td>
+<td>Seconds to wait between retry attempts</td>
+</tr>
+<tr>
+<td><code>POD_START_TIMEOUT</code></td>
+<td><code>300</code></td>
+<td>Seconds to wait for the pull pod to reach Running state</td>
+</tr>
+</tbody>
+</table>
+<p>Failed nodes are retried up to <code>MAX_RETRIES</code> times. The script waits <code>RETRY_DELAY</code> seconds before each retry pass so the node has time to recover from transient load (e.g. containerd GC after a large pull). All three variables can be adjusted at the top of the script without modifying any flags.</p>
 <h3>Batch Sizing Guidelines</h3>
 <table>
 <thead>
@@ -453,13 +482,13 @@ sha256:d96404f136cf...            → digest reference</code></pre>
 <h2>auto-pull-images.sh</h2>
 <h3>Purpose</h3>
 <p>Polls DockerHub for digest changes on a configured list of image tags and automatically triggers <code>image-pull.sh</code> when a new digest is detected. Designed to run as a cron job on the control plane so the cluster pre-fetches nightly image updates without manual intervention.</p>
-<p>A single HTML email is sent per run covering all tags that were pulled or failed. Runs where all tags are unchanged produce no email (silent).</p>
+<p>A single admin HTML email is sent per run covering all pulls and failures. Optionally, a brief faculty notification email is sent to node owners when their node receives an updated image. Runs where all nodes are already up to date produce no email (silent).</p>
 <h3>Config File</h3>
 <p>Location: <code>/opt/Lobot/tools/auto-pull-images.conf</code></p>
 <p>One entry per tag to watch. Format:</p>
-<pre><code># tag=&lt;full image:tag&gt;  [exclude=node1,node2]
-tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260313-nightly
-tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260424-nightly  exclude=debwewin-node1,debwewin-node2</code></pre>
+<pre><code># tag=&lt;full image:tag&gt;  [exclude=node1,node2,...]  [notify=email1,email2,...]
+tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260313-nightly  exclude=bootstrap,floppy,...  notify=cm70@queensu.ca,av10@queensu.ca
+tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260424-nightly  exclude=bootstrap,debwewin,floppy,...  notify=av10@queensu.ca</code></pre>
 <table>
 <thead>
 <tr>
@@ -474,11 +503,16 @@ tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab
 </tr>
 <tr>
 <td><code>exclude=</code></td>
-<td>Comma-separated node names to skip, passed to <code>image-pull.sh -e</code> (optional)</td>
+<td>Comma-separated node names to skip (optional)</td>
+</tr>
+<tr>
+<td><code>notify=</code></td>
+<td>Comma-separated email address(es) to notify after a successful pull (optional)</td>
 </tr>
 </tbody>
 </table>
 <p>Lines starting with <code>#</code> and blank lines are ignored.</p>
+<p>A sample config with real tag names and exclude lists is at <code>/opt/Lobot/tools/auto-pull-images.conf.sample</code>.</p>
 <h3>Usage</h3>
 <pre><code>./auto-pull-images.sh [--dry-run] [--noemail] [--config &lt;path&gt;]</code></pre>
 <table>
@@ -495,41 +529,53 @@ tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab
 </tr>
 <tr>
 <td><code>--noemail</code></td>
-<td>Suppress email even if pulls occur</td>
+<td>Suppress all emails (admin summary and faculty notifications)</td>
 </tr>
 <tr>
 <td><code>--config &lt;path&gt;</code></td>
-<td>Override config file location (default: <code>/etc/lobot/auto-pull-images.conf</code>)</td>
+<td>Override config file location (default: <code>/opt/Lobot/tools/auto-pull-images.conf</code>)</td>
 </tr>
 </tbody>
 </table>
 <h3>How It Works</h3>
 <ol>
-<li>For each <code>tag=</code> entry in the config, query the DockerHub API for the tag's current manifest digest</li>
-<li>Compare to the cached digest stored in <code>/var/lib/lobot/pull-digests/</code> (one file per tag)</li>
-<li>If the digest has changed (or no cache exists yet): run <code>image-pull.sh -i &lt;tag&gt; --yes --noemail [-e &lt;excludes&gt;]</code>
-<ul>
-<li>On success: write the new digest to the cache file</li>
-<li>On failure: leave cache unchanged so the next poll retries</li>
-</ul>
+<li>Query <code>kubectl</code> for all worker nodes (control-plane auto-excluded by label)</li>
+<li>For each <code>tag=</code> entry in the config:
+<ol type="a">
+<li>Query the DockerHub API for the tag's current manifest digest</li>
+<li>Compute target nodes = cluster worker nodes minus <code>exclude=</code> list</li>
+<li>For each target node, compare the remote digest to that node's cached digest</li>
+<li>For nodes whose cached digest differs (or have no cache yet), run <code>image-pull.sh -i &lt;tag&gt; -n &lt;node&gt; --yes --noemail</code></li>
+<li>On success: write the new digest to that node's cache file</li>
+<li>On failure: leave cache unchanged so the next poll retries that node</li>
+</ol>
 </li>
-<li>After processing all tags, send one HTML email if anything was pulled or failed</li>
+<li>After processing all tags, send faculty notifications (deduplicated) and the admin summary email if anything was pulled or failed</li>
 </ol>
 <h3>Digest Cache</h3>
-<p>Cached digests are stored in <code>/var/lib/lobot/pull-digests/</code> with one file per tag. The filename is the image reference with <code>/</code> and <code>:</code> replaced by <code>_</code>. The directory is created automatically on first run.</p>
-<p>To force a re-pull on the next cron tick, delete the relevant cache file:</p>
-<pre><code>rm /var/lib/lobot/pull-digests/queensschoolofcomputingdocker_gpu-jupyter-latest_*nightly*</code></pre>
+<p>Digests are cached <strong>per node per tag</strong>, so a failed pull on one node does not prevent other nodes from being marked up to date, and a retry only attempts the nodes that actually failed.</p>
+<p>Cache files live in <code>/opt/Lobot/tools/pull-digests/</code> with one file per <code>tag + node</code> combination. The filename format is:</p>
+<pre><code>&lt;tag-slug&gt;___&lt;node&gt;</code></pre>
+<p>where <code>&lt;tag-slug&gt;</code> is the image reference with <code>/</code>, <code>:</code>, and spaces replaced by <code>_</code>. The directory is created automatically on first run.</p>
+<p>To force a re-pull of all nodes for a tag on the next cron tick:</p>
+<pre><code>rm /opt/Lobot/tools/pull-digests/*20260313-nightly*</code></pre>
+<p>To force a re-pull for a single node only:</p>
+<pre><code>rm /opt/Lobot/tools/pull-digests/*20260313-nightly*___duotronic</code></pre>
 <h3>Email Notifications</h3>
-<p>Email configuration is at the top of the script — same variables as <code>image-pull.sh</code> (see above for the full reference). Subject line format:</p>
+<h4>Admin summary email</h4>
+<p>Sent to <code>TO_EMAIL</code> when any pull ran or failed. Silent (no email) when all nodes are already up to date. Subject line format:</p>
 <ul>
 <li><code>✅ Auto-pull complete | N pulled | YYYY-MM-DD</code></li>
 <li><code>❌ Auto-pull FAILED | N pulled, N failed | YYYY-MM-DD</code></li>
 </ul>
-<p>Email is <strong>not</strong> sent when all tags are unchanged (silent run). <code>image-pull.sh</code> is always invoked with <code>--noemail</code> so only one consolidated email is sent per auto-pull run.</p>
+<p>The email body includes the disk space before/after pull and the SUMMARY block from each <code>image-pull.sh</code> invocation — ctr layer progress lines are stripped. <code>image-pull.sh</code> is always invoked with <code>--noemail</code> so only one consolidated email is sent per auto-pull run.</p>
+<h4>Faculty notification email</h4>
+<p>When a node's pull succeeds and the tag's config line includes <code>notify=</code>, a brief plain-language email is sent to the specified addresses listing the updated image(s). Recipients are <strong>deduplicated across all tags</strong> — a faculty member subscribed to multiple tags receives one email listing all updated images, not one email per tag.</p>
+<p>Email is configured at the top of the script — same variables as <code>image-pull.sh</code> (see above for the full reference).</p>
 <h3>Cron Setup</h3>
 <pre><code># Check for updated nightly images every hour
 0 * * * * /opt/Lobot/tools/auto-pull-images.sh &gt;&gt; /var/log/lobot-autopull.log 2&gt;&amp;1</code></pre>
-<p>Nightly builds typically complete around 3–4am; the next top-of-hour tick after the build finishes will detect the new digest and trigger the pull automatically.</p>
+<p>Nightly builds typically complete around 3–4am; the next top-of-hour tick after the build finishes will detect the new digest and trigger the pull automatically. The cron log (<code>/var/log/lobot-autopull.log</code>) is compact — only the per-node digest check results and pull summaries are written there, not the full <code>ctr</code> progress output.</p>
 <h3>Manual Trigger</h3>
 <pre><code># Dry-run to preview what would be pulled
 /opt/Lobot/tools/auto-pull-images.sh --dry-run

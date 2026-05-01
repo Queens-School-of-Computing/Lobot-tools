@@ -113,7 +113,8 @@ saturating the network and causing pod scheduling delays.
 6. Streams live `ctr` pull progress to the terminal while polling pod status
    silently in the background
 7. After each batch completes, moves to the next batch
-8. After all batches, retries any failed nodes one at a time
+8. After all batches, retries any failed nodes up to `MAX_RETRIES` times,
+   waiting `RETRY_DELAY` seconds between each attempt
 9. Writes a clean log file (ANSI codes and `ctr` progress lines stripped)
    alongside the full terminal output
 
@@ -182,6 +183,21 @@ Before launching any pods, the script prompts:
 ```
 
 Pass `--yes` to skip the prompt for scripted or automated runs.
+
+### Retry Behavior
+
+Three variables at the top of the script control retry behaviour:
+
+| Variable | Default | Description |
+|---|---|---|
+| `MAX_RETRIES` | `3` | How many times to retry a failed node before giving up |
+| `RETRY_DELAY` | `120` | Seconds to wait between retry attempts |
+| `POD_START_TIMEOUT` | `300` | Seconds to wait for the pull pod to reach Running state |
+
+Failed nodes are retried up to `MAX_RETRIES` times. The script waits
+`RETRY_DELAY` seconds before each retry pass so the node has time to recover
+from transient load (e.g. containerd GC after a large pull). All three
+variables can be adjusted at the top of the script without modifying any flags.
 
 ### Batch Sizing Guidelines
 
@@ -517,8 +533,10 @@ automatically triggers `image-pull.sh` when a new digest is detected. Designed
 to run as a cron job on the control plane so the cluster pre-fetches nightly
 image updates without manual intervention.
 
-A single HTML email is sent per run covering all tags that were pulled or
-failed. Runs where all tags are unchanged produce no email (silent).
+A single admin HTML email is sent per run covering all pulls and failures.
+Optionally, a brief faculty notification email is sent to node owners when
+their node receives an updated image. Runs where all nodes are already
+up to date produce no email (silent).
 
 ### Config File
 
@@ -527,17 +545,21 @@ failed. Runs where all tags are unchanged produce no email (silent).
 One entry per tag to watch. Format:
 
 ```
-# tag=<full image:tag>  [exclude=node1,node2]
-tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260313-nightly
-tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260424-nightly  exclude=debwewin-node1,debwewin-node2
+# tag=<full image:tag>  [exclude=node1,node2,...]  [notify=email1,email2,...]
+tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.0.2cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260313-nightly  exclude=bootstrap,floppy,...  notify=cm70@queensu.ca,av10@queensu.ca
+tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab-ollama-claude-qsc-u24.04-20260424-nightly  exclude=bootstrap,debwewin,floppy,...  notify=av10@queensu.ca
 ```
 
 | Field | Description |
 |-------|-------------|
 | `tag=` | Full image reference including the floating nightly tag (required) |
-| `exclude=` | Comma-separated node names to skip, passed to `image-pull.sh -e` (optional) |
+| `exclude=` | Comma-separated node names to skip (optional) |
+| `notify=` | Comma-separated email address(es) to notify after a successful pull (optional) |
 
 Lines starting with `#` and blank lines are ignored.
+
+A sample config with real tag names and exclude lists is at
+`/opt/Lobot/tools/auto-pull-images.conf.sample`.
 
 ### Usage
 
@@ -548,42 +570,75 @@ Lines starting with `#` and blank lines are ignored.
 | Flag | Description |
 |------|-------------|
 | `--dry-run` | Check digests and log what would be pulled; no pulls, no cache updates, no email |
-| `--noemail` | Suppress email even if pulls occur |
-| `--config <path>` | Override config file location (default: `/etc/lobot/auto-pull-images.conf`) |
+| `--noemail` | Suppress all emails (admin summary and faculty notifications) |
+| `--config <path>` | Override config file location (default: `/opt/Lobot/tools/auto-pull-images.conf`) |
 
 ### How It Works
 
-1. For each `tag=` entry in the config, query the DockerHub API for the tag's current manifest digest
-2. Compare to the cached digest stored in `/var/lib/lobot/pull-digests/` (one file per tag)
-3. If the digest has changed (or no cache exists yet):
-   - Run `image-pull.sh -i <tag> --yes --noemail [-e <excludes>]`
-   - On success: write the new digest to the cache file
-   - On failure: leave cache unchanged so the next poll retries
-4. After processing all tags, send one HTML email if anything was pulled or failed
+1. Query `kubectl` for all worker nodes (control-plane auto-excluded by label)
+2. For each `tag=` entry in the config:
+   a. Query the DockerHub API for the tag's current manifest digest
+   b. Compute target nodes = cluster worker nodes minus `exclude=` list
+   c. For each target node, compare the remote digest to that node's cached digest
+   d. For nodes whose cached digest differs (or have no cache yet), run
+      `image-pull.sh -i <tag> -n <node> --yes --noemail`
+   e. On success: write the new digest to that node's cache file
+   f. On failure: leave cache unchanged so the next poll retries that node
+3. After processing all tags, send faculty notifications (deduplicated) and
+   the admin summary email if anything was pulled or failed
 
 ### Digest Cache
 
-Cached digests are stored in `/var/lib/lobot/pull-digests/` with one file per
-tag. The filename is the image reference with `/` and `:` replaced by `_`.
+Digests are cached **per node per tag**, so a failed pull on one node does not
+prevent other nodes from being marked up to date, and a retry only attempts the
+nodes that actually failed.
+
+Cache files live in `/opt/Lobot/tools/pull-digests/` with one file per
+`tag + node` combination. The filename format is:
+
+```
+<tag-slug>___<node>
+```
+
+where `<tag-slug>` is the image reference with `/` `:` and spaces replaced by `_`.
+
 The directory is created automatically on first run.
 
-To force a re-pull on the next cron tick, delete the relevant cache file:
+To force a re-pull of all nodes for a tag on the next cron tick:
 
 ```bash
-rm /var/lib/lobot/pull-digests/queensschoolofcomputingdocker_gpu-jupyter-latest_*nightly*
+rm /opt/Lobot/tools/pull-digests/*20260313-nightly*
+```
+
+To force a re-pull for a single node only:
+
+```bash
+rm /opt/Lobot/tools/pull-digests/*20260313-nightly*___duotronic
 ```
 
 ### Email Notifications
 
-Email configuration is at the top of the script — same variables as
-`image-pull.sh` (see above for the full reference). Subject line format:
+#### Admin summary email
+
+Sent to `TO_EMAIL` when any pull ran or failed. Silent (no email) when all
+nodes are already up to date. Subject line format:
 
 - `✅ Auto-pull complete | N pulled | YYYY-MM-DD`
 - `❌ Auto-pull FAILED | N pulled, N failed | YYYY-MM-DD`
 
-Email is **not** sent when all tags are unchanged (silent run). `image-pull.sh`
-is always invoked with `--noemail` so only one consolidated email is sent per
-auto-pull run.
+The email body includes the disk space before/after pull and the SUMMARY block
+from each `image-pull.sh` invocation — ctr layer progress lines are stripped.
+
+#### Faculty notification email
+
+When a node's pull succeeds and the tag's config line includes `notify=`,
+a brief plain-language email is sent to the specified addresses listing the
+updated image(s). Recipients are **deduplicated across all tags** — a faculty
+member subscribed to multiple tags receives one email listing all updated images,
+not one email per tag.
+
+Email is configured at the top of the script — same variables as `image-pull.sh`
+(see above for the full reference).
 
 ### Cron Setup
 
@@ -596,6 +651,9 @@ Add to the control plane's crontab:
 
 Nightly builds typically complete around 3–4am; the next top-of-hour tick after
 the build finishes will detect the new digest and trigger the pull automatically.
+The cron log (`/var/log/lobot-autopull.log`) is compact — only the per-node
+digest check results and pull summaries are written there, not the full `ctr`
+progress output.
 
 ### Manual Trigger
 

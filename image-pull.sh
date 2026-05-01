@@ -112,7 +112,7 @@ build_email_body() {
 ${LOG_CONTENT}
     </div>
     <div style="margin-top: 15px; color: #616161; font-size: 0.85em;">
-      Sent by Lobot Cluster Management &mdash; ${SMTP_SERVER}
+      Sent by Lobot Cluster Management
     </div>
   </div>
 </body>

@@ -49,9 +49,19 @@ log() { echo "$*" | tee -a "$LOG_FILE"; }
 
 log_pull_summary() {
     local PULL_LOG="$1"
-    # Append the SUMMARY block from image-pull.sh output to our email log.
-    # Starts at the === SUMMARY === line; strips ANSI codes and layer-hash lines.
-    awk '/SUMMARY/{found=1} found{print}' "$PULL_LOG" | \
+    # Extract disk space before/after sections and the SUMMARY block.
+    # Skips ctr progress lines (between "=== Pulling" and the after-disk section).
+    # Strips ANSI codes and layer-hash lines.
+    awk '
+        /=== Node:/         { print; next }
+        /=== Disk space/    { in_disk=1; print; next }
+        /=== Pulling/       { in_disk=0; next }
+        /=== Pull complete/ { in_disk=0; next }
+        /=== Pull FAILED/   { in_disk=0; next }
+        /SUMMARY/           { in_summary=1 }
+        in_disk             { print }
+        in_summary          { print }
+    ' "$PULL_LOG" | \
         sed 's/\x1B\[[0-9;]*[A-Za-z]//g' | \
         grep -v "^[a-f0-9]\{12,64\}: " | \
         tee -a "$LOG_FILE"
@@ -192,7 +202,7 @@ build_email_body() {
 ${LOG_CONTENT}
     </div>
     <div style="margin-top: 15px; color: #616161; font-size: 0.85em;">
-      Sent by Lobot Cluster Management &mdash; ${SMTP_SERVER}
+      Sent by Lobot Cluster Management
     </div>
   </div>
 </body>
@@ -224,7 +234,7 @@ send_notify_email() {
 ${TAGS_HTML}
     </ul>
     <p style="margin-top: 24px; font-size: 0.85em; color: #9e9e9e;">
-      Sent by Lobot Cluster Management &mdash; ${SMTP_SERVER}
+      Sent by Lobot Cluster Management
     </p>
   </div>
 </body>
