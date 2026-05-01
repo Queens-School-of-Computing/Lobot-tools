@@ -12,8 +12,8 @@ SMTP_PORT=25
 SMTP_USE_TLS=false
 SMTP_USERNAME=""
 SMTP_PASSWORD=""
-FROM_EMAIL="lobot-autopull@cs.queensu.ca"
-TO_EMAIL="aaron@cs.queensu.ca,whb1@queensu.ca"
+FROM_EMAIL="lobot-toolscs.queensu.ca"
+TO_EMAIL="aaron@cs.queensu.ca"
 
 DRY_RUN=false
 
