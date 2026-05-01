@@ -31,7 +31,7 @@ SMTP_USE_TLS = False
 SMTP_USERNAME = None
 SMTP_PASSWORD = None
 FROM_EMAIL = f"{socket.getfqdn().split('.')[0]}@cs.queensu.ca"
-TO_EMAIL = "aaron.visser+lobot@queensu.ca,whb1+lobot@cs.queensu.ca"
+TO_EMAIL = "aaron.visser+lobot@queensu.ca,whb1+lobot@queensu.ca"
 
 # ── Resource display name mapping ──────────────────────────────────────────────
 # Maps the Kubernetes node label `lab=<key>` to the human-readable name shown
