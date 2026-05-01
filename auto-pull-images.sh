@@ -13,7 +13,7 @@ SMTP_USE_TLS=false
 SMTP_USERNAME=""
 SMTP_PASSWORD=""
 FROM_EMAIL="lobot+tools@cs.queensu.ca"
-TO_EMAIL="aaron.visser+lobot@queensu.ca"
+TO_EMAIL="aaron.visser+lobot@queensu.ca,whb1+lobot@queensu.ca"
 
 DRY_RUN=false
 
