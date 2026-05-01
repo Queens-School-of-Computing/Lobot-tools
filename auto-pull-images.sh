@@ -305,6 +305,12 @@ FAILED_COUNT=0
 SKIPPED_COUNT=0
 declare -A NOTIFY_MAP   # email -> newline-separated list of pulled tags
 
+# Fetch worker node list once — control-plane is excluded by label selector.
+# Cache is per (tag, node) so each node tracks its own digest independently.
+CLUSTER_NODES=$(kubectl get nodes --no-headers \
+    -o custom-columns=":metadata.name" \
+    --selector='!node-role.kubernetes.io/control-plane' 2>/dev/null) || true
+
 # ── Main loop ──────────────────────────────────────────────────────────────────
 while IFS= read -r line || [ -n "$line" ]; do
     [[ "$line" =~ ^[[:space:]]*# ]] && continue
@@ -345,67 +351,83 @@ while IFS= read -r line || [ -n "$line" ]; do
     fi
     rm -f "$DIGEST_STDERR_TMP"
 
-    # Compare to cache
-    SLUG=$(tag_to_slug "$TAG")
-    CACHE_FILE="$CACHE_DIR/$SLUG"
-    CACHED_DIGEST=""
-    [ -f "$CACHE_FILE" ] && CACHED_DIGEST=$(cat "$CACHE_FILE")
+    # Build target node list: cluster nodes minus excluded nodes
+    TARGET_NODES=""
+    for NODE in $CLUSTER_NODES; do
+        SKIP=false
+        for EXCL in $(echo "$EXCLUDE" | tr ',' ' '); do
+            [ "$NODE" = "$EXCL" ] && SKIP=true && break
+        done
+        $SKIP || TARGET_NODES="$TARGET_NODES $NODE"
+    done
+    TARGET_NODES="${TARGET_NODES# }"  # trim leading space
 
-    if [ "$REMOTE_DIGEST" = "$CACHED_DIGEST" ]; then
-        log "⏭️  No change (digest: ${REMOTE_DIGEST:0:19}...)"
-        SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+    if [ -z "$TARGET_NODES" ]; then
+        log "⚠️  No target nodes after exclusions — skipping tag"
         log ""
         continue
     fi
 
-    if [ -n "$CACHED_DIGEST" ]; then
-        log "🔍 New digest detected:"
-        log "   was: ${CACHED_DIGEST:0:19}..."
-        log "   now: ${REMOTE_DIGEST:0:19}..."
-    else
-        log "🔍 No cached digest — first run for this tag"
-        log "   digest: ${REMOTE_DIGEST:0:19}..."
-    fi
+    TAG_SLUG=$(tag_to_slug "$TAG")
+    TAG_PULLED=false
+    TAG_FAILED=false
 
-    if [ "$DRY_RUN" = "true" ]; then
-        PULL_CMD_STR="$IMAGE_PULL -i $TAG --yes --noemail"
-        [ -n "$EXCLUDE" ] && PULL_CMD_STR="$PULL_CMD_STR -e $EXCLUDE"
-        log "   [dry-run] would run: $PULL_CMD_STR"
-        SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-        log ""
-        continue
-    fi
+    # Pull per node — each node has its own digest cache
+    for NODE in $TARGET_NODES; do
+        NODE_CACHE="$CACHE_DIR/${TAG_SLUG}___${NODE}"
+        CACHED_DIGEST=""
+        [ -f "$NODE_CACHE" ] && CACHED_DIGEST=$(cat "$NODE_CACHE")
 
-    # Trigger pull — full output goes to stdout (cron log); only SUMMARY
-    # is appended to LOG_FILE for the email.
-    PULL_START=$(date +%s)
-    PULL_FULL_LOG=$(mktemp)
-    PULL_ARGS=(-i "$TAG" --yes --noemail)
-    [ -n "$EXCLUDE" ] && PULL_ARGS+=(-e "$EXCLUDE")
-
-    if "$IMAGE_PULL" "${PULL_ARGS[@]}" 2>&1 | tee "$PULL_FULL_LOG"; then
-        PULL_ELAPSED=$(( $(date +%s) - PULL_START ))
-        log_pull_summary "$PULL_FULL_LOG"
-        log "✅ Pull complete: $TAG ($(format_elapsed $PULL_ELAPSED))"
-        echo "$REMOTE_DIGEST" > "$CACHE_FILE"
-        PULLED_COUNT=$((PULLED_COUNT + 1))
-        if [ -n "$NOTIFY" ]; then
-            for addr in $(echo "$NOTIFY" | tr ',' ' '); do
-                if [ -z "${NOTIFY_MAP[$addr]+x}" ]; then
-                    NOTIFY_MAP[$addr]="$TAG"
-                else
-                    NOTIFY_MAP[$addr]="${NOTIFY_MAP[$addr]}
-$TAG"
-                fi
-            done
+        if [ "$REMOTE_DIGEST" = "$CACHED_DIGEST" ]; then
+            log "⏭️  $NODE: already up to date (digest: ${REMOTE_DIGEST:0:19}...)"
+            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+            continue
         fi
-    else
+
+        if [ -n "$CACHED_DIGEST" ]; then
+            log "🔍 $NODE: new digest (was: ${CACHED_DIGEST:0:19}... now: ${REMOTE_DIGEST:0:19}...)"
+        else
+            log "🔍 $NODE: no cached digest — first pull"
+        fi
+
+        if [ "$DRY_RUN" = "true" ]; then
+            log "   [dry-run] would run: $IMAGE_PULL -i $TAG -n $NODE --yes --noemail"
+            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+            continue
+        fi
+
+        PULL_START=$(date +%s)
+        PULL_FULL_LOG=$(mktemp)
+        "$IMAGE_PULL" -i "$TAG" -n "$NODE" --yes --noemail > "$PULL_FULL_LOG" 2>&1
+        PULL_EXIT=$?
         PULL_ELAPSED=$(( $(date +%s) - PULL_START ))
         log_pull_summary "$PULL_FULL_LOG"
-        log "❌ Pull failed: $TAG ($(format_elapsed $PULL_ELAPSED))"
-        FAILED_COUNT=$((FAILED_COUNT + 1))
+        rm -f "$PULL_FULL_LOG"
+
+        if [ "$PULL_EXIT" -eq 0 ]; then
+            log "✅ $NODE: pull complete ($(format_elapsed $PULL_ELAPSED))"
+            echo "$REMOTE_DIGEST" > "$NODE_CACHE"
+            PULLED_COUNT=$((PULLED_COUNT + 1))
+            TAG_PULLED=true
+        else
+            log "❌ $NODE: pull failed ($(format_elapsed $PULL_ELAPSED))"
+            FAILED_COUNT=$((FAILED_COUNT + 1))
+            TAG_FAILED=true
+        fi
+    done
+
+    # Notify faculty if at least one node pulled successfully for this tag
+    if [ "$TAG_PULLED" = "true" ] && [ -n "$NOTIFY" ]; then
+        for addr in $(echo "$NOTIFY" | tr ',' ' '); do
+            if [ -z "${NOTIFY_MAP[$addr]+x}" ]; then
+                NOTIFY_MAP[$addr]="$TAG"
+            else
+                NOTIFY_MAP[$addr]="${NOTIFY_MAP[$addr]}
+$TAG"
+            fi
+        done
     fi
-    rm -f "$PULL_FULL_LOG"
+
     log ""
 
 done < "$CONFIG_FILE"

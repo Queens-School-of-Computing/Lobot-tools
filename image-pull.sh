@@ -2,6 +2,9 @@
 
 NAMESPACE="kube-system"
 POLL_INTERVAL=10        # seconds between checks
+MAX_RETRIES=3           # how many times to retry a failed node
+RETRY_DELAY=120         # seconds to wait between retry attempts
+POD_START_TIMEOUT=300   # seconds to wait for pod to reach Running state
 
 # ==========================================
 # Email configuration
@@ -125,9 +128,9 @@ finalize_and_email() {
   local SUBJECT="$1"
   local STATUS="$2"
 
-  # Close the raw capture by redirecting back to terminal
-  # then generate the clean log synchronously
-  exec >/dev/tty 2>&1
+  # Restore original stdout (works in both tty and non-tty/cron contexts)
+  exec >&3 2>&1
+  exec 3>&-
 
   sed 's/\x1B\[[0-9;]*[mGKHF]//g' "$RAW_TMPFILE" \
     | grep -v "^\s*[└├─|]" \
@@ -214,6 +217,7 @@ fi
 
 # Capture raw output to temp file - clean log generated at end
 RAW_TMPFILE=$(mktemp)
+exec 3>&1
 exec > >(tee "$RAW_TMPFILE") 2>&1
 SCRIPT_START=$(date +%s)
 NODE_TIMING=""
@@ -626,7 +630,7 @@ wait_for_running() {
   local NODE=$2
   local ELAPSED=0
 
-  while [ $ELAPSED -lt 120 ]; do
+  while [ $ELAPSED -lt $POD_START_TIMEOUT ]; do
     STATUS=$(kubectl get pod -n $NAMESPACE $POD -o jsonpath='{.status.phase}' 2>/dev/null)
     case $STATUS in
       Running|Succeeded|Failed) return 0 ;;
@@ -636,7 +640,7 @@ wait_for_running() {
     ELAPSED=$((ELAPSED + 5))
   done
 
-  echo "  ❌ $NODE - Pod failed to start after 120s"
+  echo "  ❌ $NODE - Pod failed to start after ${POD_START_TIMEOUT}s"
   return 1
 }
 
@@ -759,22 +763,26 @@ while [ $i -lt $TOTAL ]; do
 done
 
 # ==========================================
-# RETRY PASS
+# RETRY PASSES (up to MAX_RETRIES)
 # ==========================================
 RETRY_SUCCESS=0
-RETRY_FAILED=0
+RETRY_ATTEMPT=0
+STILL_FAILED="$FAILED_NODES"
 
-if [ -n "$FAILED_NODES" ]; then
+while [ -n "$STILL_FAILED" ] && [ $RETRY_ATTEMPT -lt $MAX_RETRIES ]; do
+  RETRY_ATTEMPT=$((RETRY_ATTEMPT + 1))
   echo ""
   echo "=========================================="
-  echo " RETRY PASS - Failed nodes one at a time"
+  echo " RETRY PASS $RETRY_ATTEMPT/$MAX_RETRIES — waiting ${RETRY_DELAY}s before retrying"
   echo " $(date)"
   echo "=========================================="
+  sleep $RETRY_DELAY
 
-  for NODE in $FAILED_NODES; do
+  NEWLY_FAILED=""
+  for NODE in $STILL_FAILED; do
     echo ""
     echo "------------------------------------------"
-    echo " Node: $NODE (retry)"
+    echo " Node: $NODE (retry $RETRY_ATTEMPT/$MAX_RETRIES)"
     echo " $(date)"
     echo "------------------------------------------"
     echo "  🔄 Retrying $NODE..."
@@ -787,16 +795,19 @@ if [ -n "$FAILED_NODES" ]; then
     cleanup_pod $POD
 
     if [ $RESULT -eq 0 ]; then
-      echo "  ✅ $NODE retry succeeded ($(format_elapsed $NODE_ELAPSED))"
+      echo "  ✅ $NODE retry $RETRY_ATTEMPT succeeded ($(format_elapsed $NODE_ELAPSED))"
       RETRY_SUCCESS=$((RETRY_SUCCESS + 1))
-      NODE_TIMING="${NODE_TIMING}\n  ✅ $NODE — $(format_elapsed $NODE_ELAPSED) (retry)"
+      NODE_TIMING="${NODE_TIMING}\n  ✅ $NODE — $(format_elapsed $NODE_ELAPSED) (retry $RETRY_ATTEMPT)"
     else
-      echo "  ❌ $NODE retry failed ($(format_elapsed $NODE_ELAPSED))"
-      RETRY_FAILED=$((RETRY_FAILED + 1))
-      NODE_TIMING="${NODE_TIMING}\n  ❌ $NODE — $(format_elapsed $NODE_ELAPSED) (retry failed)"
+      echo "  ❌ $NODE retry $RETRY_ATTEMPT failed ($(format_elapsed $NODE_ELAPSED))"
+      NEWLY_FAILED="$NEWLY_FAILED $NODE"
+      NODE_TIMING="${NODE_TIMING}\n  ❌ $NODE — $(format_elapsed $NODE_ELAPSED) (retry $RETRY_ATTEMPT failed)"
     fi
   done
-fi
+  STILL_FAILED="$NEWLY_FAILED"
+done
+
+RETRY_FAILED=$(echo $STILL_FAILED | wc -w | tr -d ' ')
 
 # ==========================================
 # SUMMARY
@@ -831,7 +842,7 @@ echo " ✅ Succeeded:         $INITIAL_SUCCESS"
 if [ -n "$FAILED_NODES" ]; then
 echo " ⚠️  Initial failures:  $FAILED_COUNT"
 echo " ✅ Retry succeeded:   $RETRY_SUCCESS"
-echo " ❌ Retry failed:      $RETRY_FAILED"
+echo " ❌ Still failed:      $RETRY_FAILED (after $RETRY_ATTEMPT attempt(s))"
 fi
 echo " ⏱️  Total elapsed:     $(format_elapsed $TOTAL_ELAPSED)"
 echo "=========================================="
