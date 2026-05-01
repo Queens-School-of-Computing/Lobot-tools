@@ -12,7 +12,7 @@ SMTP_PORT=25
 SMTP_USE_TLS=false
 SMTP_USERNAME=""
 SMTP_PASSWORD=""
-FROM_EMAIL="lobot@cs.queensu.ca"
+FROM_EMAIL="lobot-autopull@cs.queensu.ca"
 TO_EMAIL="aaron@cs.queensu.ca,whb1@queensu.ca"
 
 DRY_RUN=false
@@ -200,6 +200,80 @@ ${LOG_CONTENT}
 BODYEOF
 }
 
+send_notify_email() {
+    local TO_ADDR="$1"
+    local TAGS_LIST="$2"   # newline-separated
+
+    local TAGS_HTML=""
+    while IFS= read -r t; do
+        [ -z "$t" ] && continue
+        TAGS_HTML="${TAGS_HTML}<li style='margin:6px 0; color:#80cbc4;'>${t}</li>"
+    done <<< "$TAGS_LIST"
+
+    local BODY_FILE
+    BODY_FILE=$(mktemp)
+    cat > "$BODY_FILE" <<BODYEOF
+<html>
+<body style="font-family: sans-serif; background-color: #f5f5f5; padding: 30px;">
+  <div style="max-width: 640px; margin: 0 auto; background: #fff; border-radius: 6px; padding: 30px; border: 1px solid #e0e0e0;">
+    <h2 style="color: #2e7d32; margin-top: 0;">🆕 JupyterHub Image Updated</h2>
+    <p>A new nightly image has been pulled to your cluster node(s) and is ready to use.</p>
+    <p style="color: #555;">To use the updated image, stop your JupyterHub server and start a new one. The new image will be used automatically.</p>
+    <p style="margin-bottom: 6px; color: #333;"><strong>Updated image(s):</strong></p>
+    <ul style="font-family: monospace; font-size: 0.9em; background: #f5f5f5; padding: 14px 14px 14px 30px; border-radius: 4px;">
+${TAGS_HTML}
+    </ul>
+    <p style="margin-top: 24px; font-size: 0.85em; color: #9e9e9e;">
+      Sent by Lobot Cluster Management &mdash; ${SMTP_SERVER}
+    </p>
+  </div>
+</body>
+</html>
+BODYEOF
+
+    python3 <<PYEOF
+import smtplib, socket
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+smtp_server = "${SMTP_SERVER}"
+smtp_port   = ${SMTP_PORT}
+use_tls     = "${SMTP_USE_TLS}" in ("true", "True", "1")
+username    = "${SMTP_USERNAME}"
+password    = "${SMTP_PASSWORD}"
+from_email  = "${FROM_EMAIL}"
+to_addr     = "${TO_ADDR}"
+
+with open("${BODY_FILE}", "r") as f:
+    body = f.read()
+
+msg = MIMEMultipart("alternative")
+msg["Subject"] = "🆕 JupyterHub image updated | $(date '+%Y-%m-%d')"
+msg["From"]    = f"{socket.getfqdn()} <{from_email}>"
+msg["To"]      = to_addr
+msg.attach(MIMEText(body, "html"))
+
+try:
+    with smtplib.SMTP(smtp_server, smtp_port) as server:
+        if use_tls:
+            server.starttls()
+        if username and password:
+            server.login(username, password)
+        server.sendmail(from_email, [to_addr], msg.as_string())
+    print("ok")
+except Exception as e:
+    print(f"error: {e}")
+    exit(1)
+PYEOF
+
+    if [ $? -eq 0 ]; then
+        log " 📧 Notification sent to $TO_ADDR"
+    else
+        log " ⚠️  Notification failed for $TO_ADDR"
+    fi
+    rm -f "$BODY_FILE"
+}
+
 # ── Validation ─────────────────────────────────────────────────────────────────
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "❌ Config file not found: $CONFIG_FILE"
@@ -229,6 +303,7 @@ log ""
 PULLED_COUNT=0
 FAILED_COUNT=0
 SKIPPED_COUNT=0
+declare -A NOTIFY_MAP   # email -> newline-separated list of pulled tags
 
 # ── Main loop ──────────────────────────────────────────────────────────────────
 while IFS= read -r line || [ -n "$line" ]; do
@@ -237,10 +312,12 @@ while IFS= read -r line || [ -n "$line" ]; do
 
     TAG=""
     EXCLUDE=""
+    NOTIFY=""
     for token in $line; do
         case $token in
             tag=*)     TAG="${token#tag=}" ;;
             exclude=*) EXCLUDE="${token#exclude=}" ;;
+            notify=*)  NOTIFY="${token#notify=}" ;;
         esac
     done
 
@@ -252,6 +329,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     log "------------------------------------------"
     log " Tag: $TAG"
     [ -n "$EXCLUDE" ] && log " Exclude nodes: $EXCLUDE"
+    [ -n "$NOTIFY" ]  && log " Notify:        $NOTIFY"
     log "------------------------------------------"
 
     # Query DockerHub for current digest
@@ -311,6 +389,16 @@ while IFS= read -r line || [ -n "$line" ]; do
         log "✅ Pull complete: $TAG ($(format_elapsed $PULL_ELAPSED))"
         echo "$REMOTE_DIGEST" > "$CACHE_FILE"
         PULLED_COUNT=$((PULLED_COUNT + 1))
+        if [ -n "$NOTIFY" ]; then
+            for addr in $(echo "$NOTIFY" | tr ',' ' '); do
+                if [ -z "${NOTIFY_MAP[$addr]+x}" ]; then
+                    NOTIFY_MAP[$addr]="$TAG"
+                else
+                    NOTIFY_MAP[$addr]="${NOTIFY_MAP[$addr]}
+$TAG"
+                fi
+            done
+        fi
     else
         PULL_ELAPSED=$(( $(date +%s) - PULL_START ))
         log_pull_summary "$PULL_FULL_LOG"
@@ -337,6 +425,15 @@ log "=========================================="
 if [ "$DRY_RUN" = "true" ]; then
     log " [dry-run] No email sent."
     exit 0
+fi
+
+# ── Faculty notifications (one email per unique address) ───────────────────────
+if [ ${#NOTIFY_MAP[@]} -gt 0 ] && [ "$EMAIL_ENABLED" = "true" ]; then
+    log ""
+    log " Sending faculty notifications..."
+    for addr in "${!NOTIFY_MAP[@]}"; do
+        send_notify_email "$addr" "${NOTIFY_MAP[$addr]}"
+    done
 fi
 
 if [ $PULLED_COUNT -gt 0 ] || [ $FAILED_COUNT -gt 0 ]; then
