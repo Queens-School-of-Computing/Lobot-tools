@@ -306,6 +306,14 @@ ActionWizardScreen {
     width: 1fr;
 }
 
+.wizard-ssh-cmd {
+    background: $panel;
+    border: solid $panel-border;
+    color: $text-muted;
+    width: 1fr;
+    margin-top: 0;
+}
+
 .wizard-checkbox {
     margin-top: 1;
     color: $foreground;

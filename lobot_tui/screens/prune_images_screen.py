@@ -1,12 +1,10 @@
 """PruneImagesScreen: wizard to run prune-untagged-images.sh on a remote node via SSH."""
 
-import os
-
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, Input, Label, Static
+from textual.widgets import Button, Checkbox, Input, Label
 
 from ..config import NODE_DOMAIN, TOOLS_DIR
 
@@ -42,19 +40,21 @@ class PruneImagesScreen(ModalScreen):
                 classes="wizard-field-label",
                 markup=True,
             )
-            yield Static(
-                f"SSH key auth required. If not yet set up:\n"
-                f"  ssh-keygen -t ed25519          (skip if a key already exists)\n"
-                f"  ssh-copy-id <user>@{self._fqdn}",
-                classes="wizard-ssh-info",
-            )
 
             yield Label("SSH user *", classes="wizard-field-label")
             yield Input(
-                value=os.environ.get("USER", ""),
+                value="croot",
                 placeholder="username",
                 id="field-ssh-user",
                 classes="wizard-input",
+            )
+
+            yield Label("SSH key setup (if needed — select to copy)", classes="wizard-field-label")
+            yield Input(value="ssh-keygen -t ed25519", id="ssh-cmd-keygen", classes="wizard-ssh-cmd")
+            yield Input(
+                value=f"ssh-copy-id croot@{self._fqdn}",
+                id="ssh-cmd-copyid",
+                classes="wizard-ssh-cmd",
             )
 
             with Horizontal(classes="wizard-checkbox-row"):
@@ -71,6 +71,14 @@ class PruneImagesScreen(ModalScreen):
 
     def on_mount(self) -> None:
         self.query_one("#btn-cancel").focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "field-ssh-user":
+            user = event.value.strip() or "croot"
+            try:
+                self.query_one("#ssh-cmd-copyid", Input).value = f"ssh-copy-id {user}@{self._fqdn}"
+            except Exception:
+                pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-cancel":
