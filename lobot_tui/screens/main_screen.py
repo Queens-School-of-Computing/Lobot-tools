@@ -51,6 +51,7 @@ from .lv_expand_screen import LvExpandScreen
 from .lv_manage_screen import LvManageScreen
 from .lv_tool_screen import LvToolScreen
 from .pod_detail_screen import PodDetailScreen
+from .prune_images_screen import PruneImagesScreen
 
 _NAMESPACES_DEFAULT = [JUPYTERHUB_NAMESPACE, "all"]
 
@@ -146,6 +147,7 @@ class MainScreen(Screen):
         ("c", "node_cordon", "Cordon"),
         ("u", "node_uncordon", "Uncordon"),
         ("w", "node_drain", "Drain"),
+        ("P", "node_prune_images", "Prune images"),
     ]
 
     def __init__(self, collector: ServiceCollector) -> None:
@@ -562,6 +564,22 @@ class MainScreen(Screen):
             lambda: self.app.push_screen(ActionScreen("drain", argv, auto_close=True)),
         )
 
+    def action_node_prune_images(self) -> None:
+        node = self._require_node()
+        if node is None:
+            self.notify("Select a worker node first.", severity="warning", timeout=3)
+            return
+        self.app.push_screen(
+            PruneImagesScreen(node.name),
+            callback=self._on_prune_images_result,
+        )
+
+    def _on_prune_images_result(self, argv: list | None) -> None:
+        if not argv:
+            return
+        mode = "prune-images-check" if "--check" in argv else "prune-images"
+        self.app.push_screen(ActionScreen(mode, argv))
+
     # ── Tool actions (1–6) ────────────────────────────────────────────────
 
     def _do_tool(self, key: str) -> None:
@@ -695,6 +713,7 @@ class MainScreen(Screen):
             "c": self.action_node_cordon,
             "u": self.action_node_uncordon,
             "w": self.action_node_drain,
+            "P": self.action_node_prune_images,
             "R": self.action_generate_resource,
             "?": self.action_show_help,
             "q": self.action_quit_app,
