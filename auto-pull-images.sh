@@ -336,6 +336,7 @@ log ""
 PULLED_COUNT=0
 FAILED_COUNT=0
 SKIPPED_COUNT=0
+NODES_TO_PRUNE=""       # deduplicated list of nodes to prune after all pulls
 declare -A NOTIFY_MAP   # email -> newline-separated list of pulled tags
 
 # Fetch worker node list once — control-plane is excluded by label selector.
@@ -405,6 +406,14 @@ while IFS= read -r line || [ -n "$line" ]; do
     TAG_PULLED=false
     TAG_FAILED=false
 
+    # Collect target nodes for end-of-run prune (deduplicated)
+    for NODE in $TARGET_NODES; do
+        case " $NODES_TO_PRUNE " in
+            *" $NODE "*) ;;
+            *) NODES_TO_PRUNE="${NODES_TO_PRUNE:+$NODES_TO_PRUNE }$NODE" ;;
+        esac
+    done
+
     # Pull per node — each node has its own digest cache
     for NODE in $TARGET_NODES; do
         NODE_CACHE="$CACHE_DIR/${TAG_SLUG}___${NODE}"
@@ -442,7 +451,6 @@ while IFS= read -r line || [ -n "$line" ]; do
             echo "$REMOTE_DIGEST" > "$NODE_CACHE"
             PULLED_COUNT=$((PULLED_COUNT + 1))
             TAG_PULLED=true
-            prune_node "$NODE"
         else
             log "❌ $NODE: pull failed ($(format_elapsed $PULL_ELAPSED))"
             FAILED_COUNT=$((FAILED_COUNT + 1))
@@ -465,6 +473,17 @@ $TAG"
     log ""
 
 done < "$CONFIG_FILE"
+
+# ── Prune untagged images on all target nodes ───────────────────────────────────
+if [ "$DRY_RUN" != "true" ] && [ -n "$NODES_TO_PRUNE" ]; then
+    log ""
+    log "=========================================="
+    log " Pruning untagged images"
+    log "=========================================="
+    for NODE in $NODES_TO_PRUNE; do
+        prune_node "$NODE"
+    done
+fi
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 TOTAL_ELAPSED=$(( $(date +%s) - SCRIPT_START ))
