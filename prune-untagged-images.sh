@@ -61,7 +61,7 @@ print(f'{fmt(avail)} free of {fmt(total)} ({pct}% available)')
 # ── Scan ────────────────────────────────────────────────────────────────────
 
 # Capture once — avoids repeated crictl calls and warnings inside the loop.
-images_raw=$($CRICTL images 2>/dev/null)
+images_raw=$($CRICTL images)
 mapfile -t candidates < <(echo "$images_raw" | awk '$1 == "<none>" && $2 == "<none>" {print $3}')
 
 if [ ${#candidates[@]} -eq 0 ]; then
@@ -72,7 +72,7 @@ fi
 echo "Scanning ${#candidates[@]} untagged image(s) for container references..."
 echo ""
 
-container_json=$($CRICTL ps -a -o json 2>/dev/null)
+container_json=$($CRICTL ps -a -o json)
 
 safe_ids=()
 in_use_ids=()
