@@ -228,6 +228,14 @@ ConfirmScreen {
     align: center middle;
 }
 
+GenerateResourceScreen {
+    align: center middle;
+}
+
+PruneImagesScreen {
+    align: center middle;
+}
+
 #confirm-dialog {
     width: 72;
     height: auto;

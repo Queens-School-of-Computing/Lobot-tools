@@ -10,7 +10,8 @@ from textual.widgets import Button, Input, Label, Static
 
 from ..config import NODE_DOMAIN, TOOLS_DIR
 
-_SCRIPT = "/opt/Lobot/tools/prune-untagged-images.sh"
+# Script lives on the control plane; piped to the worker node via SSH stdin.
+_SCRIPT = str(TOOLS_DIR / "prune-untagged-images.sh")
 
 
 class PruneImagesScreen(ModalScreen):
@@ -93,11 +94,10 @@ class PruneImagesScreen(ModalScreen):
             return
 
         host = f"{ssh_user}@{self._fqdn}"
+        # Pipe the script from the control plane to the worker node via SSH stdin.
+        # The worker node doesn't need a copy of the script.
         argv = [
-            "ssh",
-            "-o", "BatchMode=yes",
-            "-o", "StrictHostKeyChecking=accept-new",
-            host,
-            "bash", _SCRIPT, flag,
+            "bash", "-c",
+            f"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new {host} bash -s -- {flag} < {_SCRIPT}",
         ]
         self.dismiss(argv)
