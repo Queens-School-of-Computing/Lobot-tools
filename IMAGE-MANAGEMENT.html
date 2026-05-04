@@ -5,6 +5,7 @@
 <li><a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/image-pull.sh" target="_blank" rel="noopener"><code>image-pull.sh</code></a> — Pre-pulls images across nodes in controlled batches to avoid saturating the network during helm upgrades</li>
 <li><a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/image-cleanup.sh" target="_blank" rel="noopener"><code>image-cleanup.sh</code></a> — Removes old image tags from all nodes while protecting images in active use by running pods</li>
 <li><a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/auto-pull-images.sh" target="_blank" rel="noopener"><code>auto-pull-images.sh</code></a> — Polls DockerHub for digest changes on configured tags and automatically triggers pulls when a new image is available</li>
+<li><a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/prune-untagged-images.sh" target="_blank" rel="noopener"><code>prune-untagged-images.sh</code></a> — Scans a worker node for untagged (<code>&lt;none&gt;/&lt;none&gt;</code>) images, identifies which are safe to remove (not referenced by any container), and optionally removes them; runs automatically after every <code>auto-pull-images.sh</code> run</li>
 </ul>
 <p>All scripts support <code>--dry-run</code> mode for safe pre-flight checks, and send HTML email notifications on completion via Python smtplib.</p>
 <p>All scripts are designed to run from the cluster control plane with <code>kubectl</code> access and write log files automatically alongside their output.</p>
@@ -550,8 +551,26 @@ tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab
 <li>On failure: leave cache unchanged so the next poll retries that node</li>
 </ol>
 </li>
+<li>Prune untagged images from every target node via SSH (see <a href="#automatic-pruning">Automatic Pruning</a> below)</li>
 <li>After processing all tags, send faculty notifications (deduplicated) and the admin summary email if anything was pulled or failed</li>
 </ol>
+<h3 id="automatic-pruning">Automatic Pruning</h3>
+<p>After all tags have been processed, <code>auto-pull-images.sh</code> SSHes into every worker node that was evaluated (whether images were freshly pulled or already up to date) and runs <code>prune-untagged-images.sh --yes</code>. This removes any untagged (<code>&lt;none&gt;/&lt;none&gt;</code>) images not referenced by a running or stopped container.</p>
+<p>Each node is pruned exactly once per run regardless of how many tags target it. Pruning is skipped in <code>--dry-run</code> mode. If SSH fails (e.g. key not set up for a node), a warning is logged and the run continues — the prune step is non-fatal.</p>
+<p><strong>Prerequisites:</strong></p>
+<ul>
+<li>SSH key auth must be set up from the control plane to each worker node as <code>croot</code> (or the user in <code>LOBOT_PRUNE_SSH_USER</code>)</li>
+<li><code>croot</code> must have a <code>NOPASSWD</code> sudoers entry for <code>/usr/bin/crictl</code> on each worker node</li>
+<li>See the cluster-setup guide and <a href="#prune-untagged-images-sh">prune-untagged-images.sh</a> below for the full setup procedure</li>
+</ul>
+<p><strong>Environment variable overrides:</strong></p>
+<table>
+<thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>LOBOT_PRUNE_SSH_USER</code></td><td><code>croot</code></td><td>SSH user for connecting to worker nodes to run the prune script</td></tr>
+<tr><td><code>LOBOT_NODE_DOMAIN</code></td><td><code>cs.queensu.ca</code></td><td>Domain suffix appended to short node names to form the SSH FQDN</td></tr>
+</tbody>
+</table>
 <h3>Digest Cache</h3>
 <p>Digests are cached <strong>per node per tag</strong>, so a failed pull on one node does not prevent other nodes from being marked up to date, and a retry only attempts the nodes that actually failed.</p>
 <p>Cache files live in <code>/opt/Lobot/tools/pull-digests/</code> with one file per <code>tag + node</code> combination. The filename format is:</p>
@@ -582,6 +601,61 @@ tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab
 
 # Live run (will pull and update cache)
 /opt/Lobot/tools/auto-pull-images.sh</code></pre>
+<hr />
+<h2 id="prune-untagged-images-sh">prune-untagged-images.sh</h2>
+<h3>Purpose</h3>
+<p>Scans a worker node for untagged (<code>&lt;none&gt;/&lt;none&gt;</code>) images in the <code>k8s.io</code> containerd namespace and optionally removes those not referenced by any container (running or stopped). Uses <code>crictl</code> to inspect container references before removal.</p>
+<p>Runs automatically after every <code>auto-pull-images.sh</code> run. Can also be triggered manually via the lobot-tui <code>P</code> node action, or run directly on any worker node.</p>
+<h3>Usage</h3>
+<pre><code>sudo bash /opt/Lobot/tools/prune-untagged-images.sh [--check] [--yes]</code></pre>
+<table>
+<thead><tr><th>Flag</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>--check</code></td><td>Scan only — report candidates without removing anything</td></tr>
+<tr><td><code>--yes</code></td><td>Remove safe images without prompting (used by auto-pull and the TUI)</td></tr>
+</tbody>
+</table>
+<p>Without flags, the script scans and then interactively prompts before removing.</p>
+<h3>How It Works</h3>
+<ol>
+<li>Lists all images in the <code>k8s.io</code> containerd namespace via <code>crictl images</code></li>
+<li>Identifies images where both the repository and tag are <code>&lt;none&gt;</code></li>
+<li>For each untagged image, queries all containers (running and stopped) to check if any reference that image ID</li>
+<li>Reports each image as <code>[SAFE]</code> (no references) or <code>[IN USE]</code> (referenced by a container, with pod name and namespace)</li>
+<li>Shows current disk usage before any removal</li>
+<li>If <code>--yes</code> is passed (or the interactive prompt is confirmed), removes all <code>[SAFE]</code> images via <code>crictl rmi</code></li>
+<li>Re-lists images to verify each removal succeeded, then reports before/after disk figures and space freed</li>
+</ol>
+<h3>Output</h3>
+<pre><code>[SAFE]   sha256:abc123...  &lt;none&gt;/&lt;none&gt;
+[IN USE] sha256:def456...  &lt;none&gt;/&lt;none&gt;  ← jupyter-user in jhub
+...
+Disk before: 457.3 GB free of 916.0 GB (49% available)
+Removing 3 image(s)...
+Disk after:  475.1 GB free of 916.0 GB (51% available)
+Freed approx 17.8 GB</code></pre>
+<p><code>[IN USE]</code> images are never removed. If the user referenced in the <code>[IN USE]</code> line needs to be migrated to a newer image, notify them so they can restart their server.</p>
+<h3>Prerequisites</h3>
+<ul>
+<li><code>crictl</code> at <code>/usr/bin/crictl</code></li>
+<li>SSH key auth from the control plane as <code>croot</code> (required for TUI and auto-pull; not needed when running locally as root)</li>
+<li><code>croot</code> must have a <code>NOPASSWD</code> sudoers entry for <code>/usr/bin/crictl</code> on each worker node</li>
+<li><code>/etc/crictl.yaml</code> on each worker node to suppress endpoint-probe warnings:</li>
+</ul>
+<pre><code>runtime-endpoint: unix:///run/containerd/containerd.sock
+image-endpoint: unix:///run/containerd/containerd.sock
+timeout: 10</code></pre>
+<p>See the cluster-setup guide for the full setup procedure for all three prerequisites.</p>
+<h3>Standalone Use</h3>
+<p>Run directly on any worker node as root or via sudo:</p>
+<pre><code># Read-only scan
+sudo bash /opt/Lobot/tools/prune-untagged-images.sh --check
+
+# Interactive: scan then prompt before removing
+sudo bash /opt/Lobot/tools/prune-untagged-images.sh
+
+# Non-interactive: remove all safe images immediately
+sudo bash /opt/Lobot/tools/prune-untagged-images.sh --yes</code></pre>
 <hr />
 <h2>Log Files</h2>
 <p>All three scripts write log files automatically to <code>$LOBOT_CLUSTER_DIR/logs/</code> (default: <code>/opt/Lobot/logs/</code>). The directory is created automatically if it does not exist.</p>
