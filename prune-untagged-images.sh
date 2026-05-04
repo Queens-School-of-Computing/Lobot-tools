@@ -36,7 +36,7 @@ for unit in ['B','KB','MB','GB','TB']:
 
 # ── Scan ────────────────────────────────────────────────────────────────────
 
-mapfile -t candidates < <(crictl images | awk '$1 == "<none>" && $2 == "<none>" {print $3}')
+mapfile -t candidates < <(sudo crictl images | awk '$1 == "<none>" && $2 == "<none>" {print $3}')
 
 if [ ${#candidates[@]} -eq 0 ]; then
     echo "No untagged images found."
@@ -46,13 +46,13 @@ fi
 echo "Scanning ${#candidates[@]} untagged image(s) for container references..."
 echo ""
 
-container_json=$(crictl ps -a -o json 2>/dev/null)
+container_json=$(sudo crictl ps -a -o json 2>/dev/null)
 
 safe_ids=()
 in_use_ids=()
 
 for id in "${candidates[@]}"; do
-    size=$(crictl images | awk -v id="$id" '$3 == id {print $4, $5}')
+    size=$(sudo crictl images | awk -v id="$id" '$3 == id {print $4, $5}')
 
     refs=$(python3 - "$id" <<'EOF'
 import sys, json
@@ -115,7 +115,7 @@ echo ""
 
 failed=0
 for id in "${safe_ids[@]}"; do
-    if crictl rmi "$id"; then
+    if sudo crictl rmi "$id"; then
         echo "  Removed $id"
     else
         echo "  Failed  $id (skipped)"
