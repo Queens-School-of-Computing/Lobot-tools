@@ -1,5 +1,5 @@
 # lobot-tui — Cluster Management TUI
-
+![Lobot Cluster Management TUI](https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/assets/images/lobottuibanner.png)
 ## Overview
 
 A [btop](https://github.com/aristocratos/btop)-style terminal dashboard for managing the Lobot JupyterHub cluster. Provides real-time visibility into running pods, node status, and resource group allocation — along with keyboard-driven access to all common admin operations.
