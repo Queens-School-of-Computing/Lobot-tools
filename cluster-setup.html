@@ -426,6 +426,37 @@ ln -sf /opt/Lobot/tools/lobot-tui.sh /usr/local/bin/lobot-tui
 # Launch
 bash /opt/Lobot/tools/lobot-tui.sh</code></pre>
 <p>See <a href="https://github.com/Queens-School-of-Computing/Lobot/blob/main/tools/lobot-tui.md" target="_blank" rel="noopener">lobot-tui.md</a> for full documentation.</p>
+<h3>Worker node SSH access (croot)</h3>
+<p>Several lobot-tui actions (<code>R</code> Generate Resource HTML, <code>P</code> Prune Untagged Images) SSH from the control plane into worker nodes as <code>croot</code>. Set this up once per worker node.</p>
+<p><strong>On the control plane:</strong></p>
+<pre><code># Generate an ed25519 key if one does not already exist
+ssh-keygen -t ed25519
+
+# Authorise the control-plane key on the worker node
+ssh-copy-id croot@&lt;node&gt;.cs.queensu.ca</code></pre>
+<p>Verify:</p>
+<pre><code>ssh croot@&lt;node&gt;.cs.queensu.ca hostname</code></pre>
+<h3>Worker node: crictl sudo access (croot)</h3>
+<p>The <strong>Prune Untagged Images</strong> action runs <code>crictl</code> on worker nodes as <code>croot</code>. Because the containerd socket is root-only, <code>croot</code> needs a passwordless <code>sudo</code> rule for <code>crictl</code>.</p>
+<p><strong>On each worker node (run as root):</strong></p>
+<pre><code># Confirm the crictl path
+which crictl          # typically /usr/bin/crictl
+
+# Create the sudoers drop-in (adjust path if different)
+echo 'croot ALL=(root) NOPASSWD: /usr/bin/crictl' \
+    | tee /etc/sudoers.d/croot-crictl
+chmod 440 /etc/sudoers.d/croot-crictl
+
+# Verify
+su - croot -s /bin/bash -c 'sudo crictl --version'</code></pre>
+<h3>Worker node: suppress crictl endpoint warnings</h3>
+<p>By default <code>crictl</code> tries multiple container runtime endpoints and prints a warning for each miss. Pin it to containerd once so the warnings never appear:</p>
+<p><strong>On each worker node:</strong></p>
+<pre><code>cat &gt; /etc/crictl.yaml &lt;&lt; 'EOF'
+runtime-endpoint: unix:///run/containerd/containerd.sock
+image-endpoint: unix:///run/containerd/containerd.sock
+EOF</code></pre>
+<p>No service restart required — crictl reads this file on every invocation.</p>
 <h3>Environment variables</h3>
 <p><code>lobot-tui</code> and <code>lobot-collector</code> read two optional environment variables to locate the cluster-config repo and the tools directory.</p>
 <table>

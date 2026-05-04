@@ -454,6 +454,10 @@ python3 -m lobot_tui</code></pre>
 <td>Generate Resource HTML — opens a wizard to generate the JupyterHub spawn form for the selected node</td>
 </tr>
 <tr>
+<td><code>P</code></td>
+<td>Prune Untagged Images — opens a wizard to scan for and remove untagged images on the selected node via SSH</td>
+</tr>
+<tr>
 <td>Click header</td>
 <td>Sort by column (click again to reverse)</td>
 </tr>
@@ -993,7 +997,7 @@ git push origin main</code></pre>
 <thead><tr><th>Field</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>Lab name</td><td>The resource key used in JupyterHub config (defaults to the node short name)</td></tr>
-<tr><td>SSH user</td><td>The user to connect as (defaults to <code>$USER</code> on the control plane)</td></tr>
+<tr><td>SSH user</td><td>The user to connect as (defaults to <code>croot</code>)</td></tr>
 </tbody>
 </table>
 <p>The node hostname is resolved automatically: if the node name contains no dots it is expanded to <code>&lt;name&gt;.cs.queensu.ca</code>.</p>
@@ -1003,6 +1007,28 @@ ssh-copy-id &lt;user&gt;@&lt;node&gt;.cs.queensu.ca</code></pre>
 <p><strong>Output:</strong> the HTML is written to <code>/tmp/lobot-resource-&lt;labname&gt;.html</code> on the control plane. The jobs panel shows the hardware summary (CPU model, core options, RAM options, GPU). When the job completes, the footer shows <code>[t] view HTML in terminal</code>.</p>
 <p>Press <code>t</code> to suspend the TUI, clear the screen, and print the raw HTML — select and copy it normally in your terminal, then press <strong>Enter</strong> to return to lobot-tui.</p>
 <p>Copy the HTML to <code>assets/html/&lt;labname&gt;.html</code> in the Lobot-tools repo, commit, and push. The <code>generate-runtime-config</code> workflow picks up the new resource limits automatically.</p>
+<h3>[P] Prune Untagged Images</h3>
+<p>Select a worker node in the node table, then press <code>P</code> to open the <strong>Prune Untagged Images</strong> wizard. This SSHes into the selected node and runs <code>prune-untagged-images.sh</code>, which scans for untagged (<code>&lt;none&gt;/&lt;none&gt;</code>) images, checks whether any are still referenced by a running or stopped container, and optionally removes the safe ones.</p>
+<p><strong>Wizard fields:</strong></p>
+<table>
+<thead><tr><th>Field</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>SSH user</td><td>The user to connect as (defaults to <code>croot</code>)</td></tr>
+<tr><td>Check only</td><td>When ticked (default), performs a read-only scan — no images are removed</td></tr>
+</tbody>
+</table>
+<p>Uncheck <strong>Check only</strong> and press <strong>Run</strong> to remove all untagged images that are not referenced by any container.</p>
+<p><strong>Output shows for each image:</strong></p>
+<ul>
+<li><code>[SAFE]</code> — not referenced by any container; will be removed if Check only is off</li>
+<li><code>[IN USE]</code> — referenced by a running or stopped container, with pod name and namespace — notify the user before removing</li>
+</ul>
+<p>The summary line shows current disk available, total disk size, and percentage free. After a prune, before/after disk figures and space freed are reported.</p>
+<p><strong>SSH key auth required.</strong> Set up once per worker node — see the cluster-setup guide for the full procedure.</p>
+<p><strong>crictl sudo access required.</strong> <code>croot</code> must have a <code>NOPASSWD</code> sudoers rule for <code>/usr/bin/crictl</code> on each worker node — see the cluster-setup guide.</p>
+<p><strong>Standalone use:</strong> the script can also be run directly on any node:</p>
+<pre><code>bash /opt/Lobot/tools/prune-untagged-images.sh --check   # read-only scan
+bash /opt/Lobot/tools/prune-untagged-images.sh            # interactive prompt before removal</code></pre>
 <hr />
 <h2>Background Job System</h2>
 <p>Tool actions 1–5 run as background jobs so the main dashboard remains usable during long operations like image-pull.</p>

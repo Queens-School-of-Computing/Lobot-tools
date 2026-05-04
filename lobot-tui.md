@@ -386,6 +386,7 @@ Focus the node table with `Tab`. The control plane (`lobot-dev.cs.queensu.ca`) i
 | `u` | Uncordon node — press twice within 2 seconds to confirm |
 | `w` | Drain node — press twice within 2 seconds to confirm |
 | `R` | Generate Resource HTML — opens a wizard to generate the JupyterHub spawn form for the selected node |
+| `P` | Prune Untagged Images — opens a wizard to scan for and remove untagged images on the selected node via SSH |
 | Click header | Sort by column (click again to reverse) |
 
 > **Disk sub-rows**: nodes with Longhorn data show a `▶` indicator. Press `Space` or `→` to expand — a sub-row appears for each disk showing its mount path, schedulable status (`Sched`/`Disab`), and a per-disk usage bar. Press `←` or `Space` again to collapse. The cursor can navigate through sub-rows; all node operations (`c`, `u`, `w`, `n`) always apply to the parent node regardless of which row is selected.
@@ -709,6 +710,38 @@ ssh-copy-id <user>@<node>.cs.queensu.ca
 Press `t` to suspend the TUI, clear the screen, and print the raw HTML — select and copy it normally in your terminal, then press **Enter** to return to lobot-tui.
 
 Copy the HTML to `assets/html/<labname>.html` in the Lobot-tools repo, commit, and push. The `generate-runtime-config` workflow picks up the new resource limits automatically.
+
+---
+
+### `[P]` Prune Untagged Images
+
+Select a worker node in the node table, then press `P` to open the **Prune Untagged Images** wizard. This SSHes into the selected node and runs `prune-untagged-images.sh`, which scans for untagged (`<none>/<none>`) images, checks whether any are still referenced by a running or stopped container, and optionally removes the safe ones.
+
+**Wizard fields:**
+
+| Field | Description |
+|-------|-------------|
+| SSH user | The user to connect as (defaults to `croot`) |
+| Check only | When ticked (default), performs a read-only scan — no images are removed |
+
+Uncheck **Check only** and press **Run** to remove all untagged images that are not referenced by any container.
+
+**Output shows for each image:**
+- `[SAFE]` — not referenced by any container; will be removed if Check only is off
+- `[IN USE]` — referenced by a running or stopped container, with pod name and namespace — notify the user before removing
+
+The summary line shows current disk available, total disk size, and percentage free. After a prune, before/after disk figures and space freed are reported.
+
+**SSH key auth required.** Set up once per worker node — see the cluster-setup guide for the full procedure.
+
+**crictl sudo access required.** `croot` must have a `NOPASSWD` sudoers rule for `/usr/bin/crictl` on each worker node — see the cluster-setup guide.
+
+**Standalone use:** the script can also be run directly on any node:
+
+```bash
+bash /opt/Lobot/tools/prune-untagged-images.sh --check   # read-only scan
+bash /opt/Lobot/tools/prune-untagged-images.sh            # interactive prompt before removal
+```
 
 ---
 

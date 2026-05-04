@@ -296,6 +296,29 @@ if [ ! -f "$IMAGE_PULL" ]; then
     exit 1
 fi
 
+PRUNE_SCRIPT="$TOOLS_DIR/prune-untagged-images.sh"
+PRUNE_SSH_USER="${LOBOT_PRUNE_SSH_USER:-croot}"
+PRUNE_NODE_DOMAIN="${LOBOT_NODE_DOMAIN:-cs.queensu.ca}"
+
+# ── Prune helper ───────────────────────────────────────────────────────────────
+prune_node() {
+    local NODE="$1"
+    if [ ! -f "$PRUNE_SCRIPT" ]; then
+        log " ⚠️  prune-untagged-images.sh not found — skipping prune for $NODE"
+        return 0
+    fi
+    local FQDN="$NODE"
+    [[ "$NODE" != *.* ]] && FQDN="${NODE}.${PRUNE_NODE_DOMAIN}"
+    log " 🧹 Pruning untagged images on $NODE..."
+    local PRUNE_OUT
+    PRUNE_OUT=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+        -o ConnectTimeout=10 \
+        "${PRUNE_SSH_USER}@${FQDN}" bash -s -- --yes < "$PRUNE_SCRIPT" 2>&1) || true
+    while IFS= read -r pline; do
+        log "    $pline"
+    done <<< "$PRUNE_OUT"
+}
+
 # ── Header ─────────────────────────────────────────────────────────────────────
 log "=========================================="
 if [ "$DRY_RUN" = "true" ]; then
@@ -419,6 +442,7 @@ while IFS= read -r line || [ -n "$line" ]; do
             echo "$REMOTE_DIGEST" > "$NODE_CACHE"
             PULLED_COUNT=$((PULLED_COUNT + 1))
             TAG_PULLED=true
+            prune_node "$NODE"
         else
             log "❌ $NODE: pull failed ($(format_elapsed $PULL_ELAPSED))"
             FAILED_COUNT=$((FAILED_COUNT + 1))

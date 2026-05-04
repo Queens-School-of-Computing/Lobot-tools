@@ -632,6 +632,63 @@ bash /opt/Lobot/tools/lobot-tui.sh
 
 See [lobot-tui.md](lobot-tui.md) for full documentation.
 
+### Worker node SSH access (croot)
+
+Several lobot-tui actions (`R` Generate Resource HTML, `P` Prune Untagged Images) SSH from the
+control plane into worker nodes as `croot`. Set this up once per worker node.
+
+**On the control plane:**
+
+```bash
+# Generate an ed25519 key if one does not already exist
+ssh-keygen -t ed25519
+
+# Authorise the control-plane key on the worker node
+ssh-copy-id croot@<node>.cs.queensu.ca
+```
+
+Verify:
+
+```bash
+ssh croot@<node>.cs.queensu.ca hostname
+```
+
+### Worker node: crictl sudo access (croot)
+
+The **Prune Untagged Images** action runs `crictl` on worker nodes as `croot`. Because the
+containerd socket is root-only, `croot` needs a passwordless `sudo` rule for `crictl`.
+
+**On each worker node (run as root):**
+
+```bash
+# Confirm the crictl path
+which crictl          # typically /usr/bin/crictl
+
+# Create the sudoers drop-in (adjust path if different)
+echo 'croot ALL=(root) NOPASSWD: /usr/bin/crictl' \
+    | tee /etc/sudoers.d/croot-crictl
+chmod 440 /etc/sudoers.d/croot-crictl
+
+# Verify
+su - croot -s /bin/bash -c 'sudo crictl --version'
+```
+
+### Worker node: suppress crictl endpoint warnings
+
+By default `crictl` tries multiple container runtime endpoints and prints a warning for each
+miss. Pin it to containerd once so the warnings never appear:
+
+**On each worker node:**
+
+```bash
+cat > /etc/crictl.yaml << 'EOF'
+runtime-endpoint: unix:///run/containerd/containerd.sock
+image-endpoint: unix:///run/containerd/containerd.sock
+EOF
+```
+
+No service restart required — crictl reads this file on every invocation.
+
 ### Environment variables
 
 `lobot-tui` and `lobot-collector` read two optional environment variables to locate the cluster-config repo and the tools directory.
