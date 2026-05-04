@@ -141,13 +141,19 @@ before=$(disk_avail_bytes)
 echo "Disk before: $(disk_summary)"
 echo ""
 
+for id in "${safe_ids[@]}"; do
+    $CRICTL rmi "$id" 2>/dev/null || true
+done
+
+# Verify by checking what's actually still present — crictl rmi exit codes are unreliable.
+remaining=$($CRICTL images | awk '{print $3}')
 failed=0
 for id in "${safe_ids[@]}"; do
-    if $CRICTL rmi "$id" 2>/dev/null; then
-        echo "  Removed $id"
-    else
-        echo "  Failed  $id (skipped)"
+    if echo "$remaining" | grep -qx "$id"; then
+        echo "  Failed  $id (still present)"
         (( failed++ )) || true
+    else
+        echo "  Removed $id"
     fi
 done
 
