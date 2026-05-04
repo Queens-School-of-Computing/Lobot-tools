@@ -314,6 +314,17 @@ ActionWizardScreen {
     margin-top: 0;
 }
 
+.wizard-ssh-row {
+    height: auto;
+    margin-top: 0;
+}
+
+.wizard-ssh-copy {
+    width: auto;
+    min-width: 8;
+    margin-top: 0;
+}
+
 .wizard-checkbox {
     margin-top: 1;
     color: $foreground;

@@ -54,13 +54,21 @@ class GenerateResourceScreen(ModalScreen):
                 classes="wizard-input",
             )
 
-            yield Label("SSH key setup (if needed — select to copy)", classes="wizard-field-label")
-            yield Input(value="ssh-keygen -t ed25519", id="ssh-cmd-keygen", classes="wizard-ssh-cmd")
-            yield Input(
-                value=f"ssh-copy-id croot@{self._fqdn}",
-                id="ssh-cmd-copyid",
-                classes="wizard-ssh-cmd",
-            )
+            yield Label("SSH key setup (if needed)", classes="wizard-field-label")
+            with Horizontal(classes="wizard-ssh-row"):
+                yield Input(
+                    value="ssh-keygen -t ed25519",
+                    id="ssh-cmd-keygen",
+                    classes="wizard-ssh-cmd",
+                )
+                yield Button("Copy", id="btn-copy-keygen", classes="wizard-ssh-copy")
+            with Horizontal(classes="wizard-ssh-row"):
+                yield Input(
+                    value=f"ssh-copy-id croot@{self._fqdn}",
+                    id="ssh-cmd-copyid",
+                    classes="wizard-ssh-cmd",
+                )
+                yield Button("Copy", id="btn-copy-copyid", classes="wizard-ssh-copy")
 
             with Horizontal(id="wizard-buttons"):
                 yield Button("Cancel  (q)", variant="error", id="btn-cancel")
@@ -78,10 +86,19 @@ class GenerateResourceScreen(ModalScreen):
                 pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-cancel":
+        bid = event.button.id
+        if bid == "btn-cancel":
             self.dismiss(None)
-        elif event.button.id == "btn-run":
+        elif bid == "btn-run":
             self._do_run()
+        elif bid == "btn-copy-keygen":
+            self._copy(self.query_one("#ssh-cmd-keygen", Input).value)
+        elif bid == "btn-copy-copyid":
+            self._copy(self.query_one("#ssh-cmd-copyid", Input).value)
+
+    def _copy(self, text: str) -> None:
+        self.app.copy_to_clipboard(text)
+        self.notify("Copied to clipboard", timeout=2)
 
     def on_key(self, event) -> None:
         if event.key == "r" and not isinstance(self.focused, Input):

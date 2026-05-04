@@ -8,7 +8,6 @@ from textual.widgets import Button, Checkbox, Input, Label
 
 from ..config import NODE_DOMAIN, TOOLS_DIR
 
-# Script lives on the control plane; piped to the worker node via SSH stdin.
 _SCRIPT = str(TOOLS_DIR / "prune-untagged-images.sh")
 
 
@@ -49,13 +48,21 @@ class PruneImagesScreen(ModalScreen):
                 classes="wizard-input",
             )
 
-            yield Label("SSH key setup (if needed — select to copy)", classes="wizard-field-label")
-            yield Input(value="ssh-keygen -t ed25519", id="ssh-cmd-keygen", classes="wizard-ssh-cmd")
-            yield Input(
-                value=f"ssh-copy-id croot@{self._fqdn}",
-                id="ssh-cmd-copyid",
-                classes="wizard-ssh-cmd",
-            )
+            yield Label("SSH key setup (if needed)", classes="wizard-field-label")
+            with Horizontal(classes="wizard-ssh-row"):
+                yield Input(
+                    value="ssh-keygen -t ed25519",
+                    id="ssh-cmd-keygen",
+                    classes="wizard-ssh-cmd",
+                )
+                yield Button("Copy", id="btn-copy-keygen", classes="wizard-ssh-copy")
+            with Horizontal(classes="wizard-ssh-row"):
+                yield Input(
+                    value=f"ssh-copy-id croot@{self._fqdn}",
+                    id="ssh-cmd-copyid",
+                    classes="wizard-ssh-cmd",
+                )
+                yield Button("Copy", id="btn-copy-copyid", classes="wizard-ssh-copy")
 
             with Horizontal(classes="wizard-checkbox-row"):
                 yield Checkbox(
@@ -81,10 +88,19 @@ class PruneImagesScreen(ModalScreen):
                 pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-cancel":
+        bid = event.button.id
+        if bid == "btn-cancel":
             self.dismiss(None)
-        elif event.button.id == "btn-run":
+        elif bid == "btn-run":
             self._do_run()
+        elif bid == "btn-copy-keygen":
+            self._copy(self.query_one("#ssh-cmd-keygen", Input).value)
+        elif bid == "btn-copy-copyid":
+            self._copy(self.query_one("#ssh-cmd-copyid", Input).value)
+
+    def _copy(self, text: str) -> None:
+        self.app.copy_to_clipboard(text)
+        self.notify("Copied to clipboard", timeout=2)
 
     def on_key(self, event) -> None:
         if event.key in ("enter", "space") and isinstance(self.focused, Button):
@@ -101,10 +117,7 @@ class PruneImagesScreen(ModalScreen):
 
         check_only = self.query_one("#cb-check-only", Checkbox).value
         flag = "--check" if check_only else "--yes"
-
         host = f"{ssh_user}@{self._fqdn}"
-        # Pipe the script from the control plane to the worker node via SSH stdin.
-        # The worker node doesn't need a copy of the script.
         argv = [
             "bash", "-c",
             f"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new {host} bash -s -- {flag} < {_SCRIPT}",
