@@ -18,9 +18,15 @@ for arg in "$@"; do
     esac
 done
 
-# Returns available bytes on the filesystem containing containerd's image store.
+# Pin to containerd socket to suppress "trying next endpoint" warnings.
+CRICTL="sudo crictl --runtime-endpoint unix:///run/containerd/containerd.sock"
+
 disk_avail_bytes() {
     df --output=avail -B1 /var/lib/containerd 2>/dev/null | tail -1
+}
+
+disk_total_bytes() {
+    df --output=size -B1 /var/lib/containerd 2>/dev/null | tail -1
 }
 
 human_bytes() {
@@ -34,9 +40,29 @@ for unit in ['B','KB','MB','GB','TB']:
 "
 }
 
+disk_summary() {
+    local avail total
+    avail=$(disk_avail_bytes)
+    total=$(disk_total_bytes)
+    python3 -c "
+avail, total = $avail, $total
+
+def fmt(v):
+    for unit in ['B','KB','MB','GB','TB']:
+        if v < 1024 or unit == 'TB':
+            return f'{v:.1f} {unit}'
+        v /= 1024
+
+pct = round(avail / total * 100) if total else 0
+print(f'{fmt(avail)} free of {fmt(total)} ({pct}% available)')
+"
+}
+
 # ── Scan ────────────────────────────────────────────────────────────────────
 
-mapfile -t candidates < <(sudo crictl images | awk '$1 == "<none>" && $2 == "<none>" {print $3}')
+# Capture once — avoids repeated crictl calls and warnings inside the loop.
+images_raw=$($CRICTL images 2>/dev/null)
+mapfile -t candidates < <(echo "$images_raw" | awk '$1 == "<none>" && $2 == "<none>" {print $3}')
 
 if [ ${#candidates[@]} -eq 0 ]; then
     echo "No untagged images found."
@@ -46,31 +72,32 @@ fi
 echo "Scanning ${#candidates[@]} untagged image(s) for container references..."
 echo ""
 
-container_json=$(sudo crictl ps -a -o json 2>/dev/null)
+container_json=$($CRICTL ps -a -o json 2>/dev/null)
 
 safe_ids=()
 in_use_ids=()
 
 for id in "${candidates[@]}"; do
-    size=$(sudo crictl images | awk -v id="$id" '$3 == id {print $4, $5}')
+    size=$(echo "$images_raw" | awk -v id="$id" '$3 == id {print $4, $5}')
 
-    refs=$(python3 - "$id" <<'EOF'
+    # Pipe container_json via stdin so Python has one clear input stream.
+    # (Using 'python3 -' with a heredoc for code AND sys.stdin.read() for data
+    # doesn't work — stdin can only be read once.)
+    refs=$(echo "$container_json" | python3 -c "
 import sys, json
-
 image_id = sys.argv[1]
-data = json.loads(sys.stdin.read())
-
-for c in data.get("containers", []):
-    if image_id not in c.get("imageRef", ""):
+raw = sys.stdin.read().strip()
+data = json.loads(raw) if raw else {}
+for c in data.get('containers', []):
+    if image_id not in c.get('imageRef', ''):
         continue
-    labels = c.get("labels", {})
-    pod    = labels.get("io.kubernetes.pod.name", "unknown")
-    ns     = labels.get("io.kubernetes.pod.namespace", "unknown")
-    state  = c.get("state", "").replace("CONTAINER_", "")
-    cname  = c.get("metadata", {}).get("name", "unknown")
-    print(f"  {state:<12} {ns}/{pod}  (container: {cname})")
-EOF
-    <<< "$container_json")
+    labels = c.get('labels', {})
+    pod    = labels.get('io.kubernetes.pod.name', 'unknown')
+    ns     = labels.get('io.kubernetes.pod.namespace', 'unknown')
+    state  = c.get('state', '').replace('CONTAINER_', '')
+    cname  = c.get('metadata', {}).get('name', 'unknown')
+    print(f'  {state:<12} {ns}/{pod}  (container: {cname})')
+" "$id")
 
     if [ -z "$refs" ]; then
         printf "[SAFE]    %s  (%s)\n" "$id" "$size"
@@ -86,6 +113,7 @@ done
 echo "----------------------------------------"
 printf "Safe to remove:          %d image(s)\n" "${#safe_ids[@]}"
 printf "In use (notify users):   %d image(s)\n" "${#in_use_ids[@]}"
+printf "Disk:                    %s\n" "$(disk_summary)"
 echo ""
 
 # ── Prompt & remove ─────────────────────────────────────────────────────────
@@ -110,12 +138,12 @@ fi
 
 echo ""
 before=$(disk_avail_bytes)
-echo "Disk available before: $(human_bytes "$before")"
+echo "Disk before: $(disk_summary)"
 echo ""
 
 failed=0
 for id in "${safe_ids[@]}"; do
-    if sudo crictl rmi "$id"; then
+    if $CRICTL rmi "$id" 2>/dev/null; then
         echo "  Removed $id"
     else
         echo "  Failed  $id (skipped)"
@@ -126,8 +154,9 @@ done
 after=$(disk_avail_bytes)
 freed=$(( after - before ))
 
+
 echo ""
-echo "Disk available after:  $(human_bytes "$after")"
-printf "Space freed:           %s\n" "$(human_bytes "$freed")"
+echo "Disk after:  $(disk_summary)"
+printf "Space freed: %s\n" "$(human_bytes "$freed")"
 [ "$failed" -gt 0 ] && echo "Warning: $failed image(s) could not be removed."
 echo "Done."
