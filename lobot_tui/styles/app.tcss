@@ -263,7 +263,7 @@ ActionWizardScreen {
 }
 
 #wizard-dialog {
-    width: 90;
+    width: 120;
     height: auto;
     max-height: 80%;
     background: $surface;
