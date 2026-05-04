@@ -4,7 +4,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, Input, Label
+from textual.widgets import Button, Checkbox, Input, Label, Static
 
 from ..config import NODE_DOMAIN, TOOLS_DIR
 
@@ -31,6 +31,13 @@ class PruneImagesScreen(ModalScreen):
     def action_cancel(self) -> None:
         self.dismiss(None)
 
+    def _ssh_info(self, user: str) -> str:
+        return (
+            f"SSH key auth required. If not yet set up:\n"
+            f"  ssh-keygen -t ed25519\n"
+            f"  ssh-copy-id {user}@{self._fqdn}"
+        )
+
     def compose(self) -> ComposeResult:
         with Vertical(id="wizard-dialog"):
             yield Label("[bold cyan]Prune Untagged Images[/]", id="wizard-title", markup=True)
@@ -48,21 +55,7 @@ class PruneImagesScreen(ModalScreen):
                 classes="wizard-input",
             )
 
-            yield Label("SSH key setup (if needed)", classes="wizard-field-label")
-            with Horizontal(classes="wizard-ssh-row"):
-                yield Input(
-                    value="ssh-keygen -t ed25519",
-                    id="ssh-cmd-keygen",
-                    classes="wizard-ssh-cmd",
-                )
-                yield Button("Copy", id="btn-copy-keygen", classes="wizard-ssh-copy")
-            with Horizontal(classes="wizard-ssh-row"):
-                yield Input(
-                    value=f"ssh-copy-id croot@{self._fqdn}",
-                    id="ssh-cmd-copyid",
-                    classes="wizard-ssh-cmd",
-                )
-                yield Button("Copy", id="btn-copy-copyid", classes="wizard-ssh-copy")
+            yield Static(self._ssh_info("croot"), id="ssh-info", classes="wizard-ssh-info")
 
             with Horizontal(classes="wizard-checkbox-row"):
                 yield Checkbox(
@@ -83,24 +76,15 @@ class PruneImagesScreen(ModalScreen):
         if event.input.id == "field-ssh-user":
             user = event.value.strip() or "croot"
             try:
-                self.query_one("#ssh-cmd-copyid", Input).value = f"ssh-copy-id {user}@{self._fqdn}"
+                self.query_one("#ssh-info", Static).update(self._ssh_info(user))
             except Exception:
                 pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        bid = event.button.id
-        if bid == "btn-cancel":
+        if event.button.id == "btn-cancel":
             self.dismiss(None)
-        elif bid == "btn-run":
+        elif event.button.id == "btn-run":
             self._do_run()
-        elif bid == "btn-copy-keygen":
-            self._copy(self.query_one("#ssh-cmd-keygen", Input).value)
-        elif bid == "btn-copy-copyid":
-            self._copy(self.query_one("#ssh-cmd-copyid", Input).value)
-
-    def _copy(self, text: str) -> None:
-        self.app.copy_to_clipboard(text)
-        self.notify("Copied to clipboard", timeout=2)
 
     def on_key(self, event) -> None:
         if event.key in ("enter", "space") and isinstance(self.focused, Button):
