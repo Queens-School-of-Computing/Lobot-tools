@@ -1,0 +1,92 @@
+# billing_config.yaml — Lobot Metrics billing group configuration
+#
+# Copy this file to /opt/Lobot/metrics_data/billing_config.yaml and edit it
+# to match your labs and external groups.
+#
+# How it works:
+#   - user-level assignments take priority over lab-level assignments
+#   - a user not matched by any rule appears as "unassigned" in reports
+#   - groups are checked in definition order; first match wins
+#
+# Fields:
+#   display_name  — Label shown in reports and email digests (required)
+#   contact       — Email address for this group's billing contact (optional;
+#                   future: per-group digest delivery)
+#   users         — JupyterHub usernames that always roll up to this group
+#                   regardless of which lab node they run on (optional)
+#   labs          — Kubernetes node label values (lab=<value>) whose entire
+#                   user population rolls up to this group (optional)
+
+billing_groups:
+
+  # ── External/shared-services groups ──────────────────────────────────────────
+  # Users from other departments who use Lobot resources should be listed here
+  # by username so their sessions are captured regardless of which lab they use.
+
+  smith_business:
+    display_name: "Smith School of Business"
+    contact: "finance@smith.queensu.ca"
+    users: []        # add JupyterHub usernames here, e.g. [jsmith, bwilson]
+
+  # ── Research labs ─────────────────────────────────────────────────────────────
+  # Typically one entry per lab=<value> node label.
+
+  bamlab:
+    display_name: "BAM Lab"
+    contact: "bamlab-pi@queensu.ca"
+    labs:
+      - bamlab
+
+  gandslab:
+    display_name: "GOAL & SWIMS Labs"
+    contact: "pi@queensu.ca"
+    labs:
+      - gandslab
+
+  quarrglab:
+    display_name: "QUARRG Lab"
+    labs:
+      - quarrglab
+
+  riselab:
+    display_name: "RISE Lab"
+    labs:
+      - riselab
+
+  mulab:
+    display_name: "MU Lab"
+    labs:
+      - mulab
+
+  miblab:
+    display_name: "MIB Lab"
+    labs:
+      - miblab
+
+  winemocollab:
+    display_name: "WinEmo Collab"
+    labs:
+      - winemocollab
+
+  digilab:
+    display_name: "DigiLab"
+    labs:
+      - digilab
+
+  # ── Lobot shared compute nodes ────────────────────────────────────────────────
+  # These nodes host multiple departments; individual users are billed via
+  # user-level assignments above. Sessions not matched by a user rule fall
+  # through to this lab-level catch-all.
+
+  lobot_shared:
+    display_name: "Lobot Shared Compute"
+    labs:
+      - lobot_a40
+      - lobot_a5000
+      - lobot_a16
+      - lobot_problackwell
+
+  devlab:
+    display_name: "Dev Lab"
+    labs:
+      - devlab

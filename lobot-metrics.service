@@ -1,0 +1,43 @@
+# Install:
+#   sudo cp /opt/Lobot/tools/lobot-metrics.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now lobot-metrics
+#
+# Venv setup (one-time):
+#   python3 -m venv /opt/Lobot/tools/lobot_metrics/.venv
+#   /opt/Lobot/tools/lobot_metrics/.venv/bin/pip install \
+#       -r /opt/Lobot/tools/lobot_metrics/requirements-metrics.txt
+#
+# Also install lobot_tui deps into this venv (needed for ClusterState parsing):
+#   /opt/Lobot/tools/lobot_metrics/.venv/bin/pip install \
+#       -r /opt/Lobot/tools/lobot_tui/requirements-tui.txt
+#
+# Useful commands:
+#   sudo systemctl status lobot-metrics
+#   sudo journalctl -u lobot-metrics -f
+#   /opt/Lobot/tools/lobot-metrics.sh sessions --active
+#   /opt/Lobot/tools/lobot-metrics.sh report --month $(date +%Y-%m) --by group
+
+[Unit]
+Description=Lobot Metrics Recorder
+After=network.target lobot-collector.service
+Requires=lobot-collector.service
+
+[Service]
+Type=simple
+Environment=LOBOT_CLUSTER_DIR=/opt/Lobot
+Environment=LOBOT_TOOLS_DIR=/opt/Lobot/tools
+WorkingDirectory=/opt/Lobot/tools
+ExecStart=/opt/Lobot/tools/lobot-metrics.sh
+User=croot
+Restart=on-failure
+RestartSec=15s
+
+# Allow time for graceful shutdown
+TimeoutStopSec=30s
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

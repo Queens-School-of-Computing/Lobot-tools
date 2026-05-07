@@ -1,0 +1,17 @@
+# Install:
+#   sudo cp /opt/Lobot/tools/lobot-metrics-digest.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now lobot-metrics-digest.timer
+#
+# Fires on the 1st of each month at 08:00 and sends the previous month's digest.
+# Persistent=true means it will fire on next boot if it was missed (e.g. server was down).
+
+[Unit]
+Description=Monthly Lobot metrics digest email
+
+[Timer]
+OnCalendar=*-*-01 08:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
