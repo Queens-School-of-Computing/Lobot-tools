@@ -218,22 +218,6 @@ class MetricsRecorder:
             return None
 
 
-def _parse_storage(value: str) -> float:
-    """Convert a Kubernetes storage string to GB. e.g. '50Gi' → 50.0"""
-    value = value.strip()
-    units = {"Ti": 1024.0, "Gi": 1.0, "Mi": 1.0 / 1024, "Ki": 1.0 / (1024 ** 2),
-             "T": 1000.0, "G": 1.0, "M": 1.0 / 1000, "K": 1.0 / (1000 ** 2)}
-    for suffix, factor in units.items():
-        if value.endswith(suffix):
-            try:
-                return float(value[: -len(suffix)]) * factor
-            except ValueError:
-                return 0.0
-    try:
-        return float(value) / (1024 ** 3)
-    except ValueError:
-        return 0.0
-
     async def _on_pod_disappeared(self, pod_name: str, pod: PodInfo) -> None:
         sid = _session_id(pod)
         end_iso = _now_iso()
@@ -255,3 +239,20 @@ def _parse_storage(value: str) -> float:
                 conn.close()
 
         await loop.run_in_executor(None, _close)
+
+
+def _parse_storage(value: str) -> float:
+    """Convert a Kubernetes storage string to GB. e.g. '50Gi' → 50.0"""
+    value = value.strip()
+    units = {"Ti": 1024.0, "Gi": 1.0, "Mi": 1.0 / 1024, "Ki": 1.0 / (1024 ** 2),
+             "T": 1000.0, "G": 1.0, "M": 1.0 / 1000, "K": 1.0 / (1000 ** 2)}
+    for suffix, factor in units.items():
+        if value.endswith(suffix):
+            try:
+                return float(value[: -len(suffix)]) * factor
+            except ValueError:
+                return 0.0
+    try:
+        return float(value) / (1024 ** 3)
+    except ValueError:
+        return 0.0
