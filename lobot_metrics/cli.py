@@ -249,7 +249,7 @@ def _heatmap_char(util: float) -> str:
 
 
 def cmd_heatmap(args: argparse.Namespace) -> None:
-    from .config import DB_PATH
+    from .config import DB_PATH, HEATMAP_TIMEZONE_NAME, heatmap_tz_offset_minutes
     from .db import open_db, query_heatmap
     from .reporter import _month_bounds
 
@@ -257,11 +257,13 @@ def cmd_heatmap(args: argparse.Namespace) -> None:
     month_label = f"{year:04d}-{month:02d}"
     metric = args.metric
     lab = args.lab or None
+    tz_offset = heatmap_tz_offset_minutes(year, month)
 
     start, end = _month_bounds(year, month)
     conn = open_db(DB_PATH)
     try:
-        rows = query_heatmap(conn, start, end, metric=metric, lab=lab)
+        rows = query_heatmap(conn, start, end, metric=metric, lab=lab,
+                             tz_offset_minutes=tz_offset)
     finally:
         conn.close()
 
@@ -302,7 +304,7 @@ def cmd_heatmap(args: argparse.Namespace) -> None:
     print("Legend:  · 0%   ░ 1–25%   ▒ 26–50%   ▓ 51–75%   █ 76–100%")
 
     dow_name = _DOW_LABELS[peak_row["dow"]]
-    hour_str = f"{peak_row['hour']:02d}:00 UTC"
+    hour_str = f"{peak_row['hour']:02d}:00 {HEATMAP_TIMEZONE_NAME}"
     capacity = peak_row.get("capacity")
     if metric == "pods":
         print(f"Peak:    {int(peak_row['peak_util'])} pods — {dow_name} {hour_str}")

@@ -416,21 +416,24 @@ def query_heatmap(
     end_iso: str,
     metric: str = "gpu",
     lab: Optional[str] = None,
+    tz_offset_minutes: int = 0,
 ) -> list[dict]:
     """
     Returns avg/peak utilization per (dow, hour) from resource_snapshots.
     dow follows strftime %w: 0=Sun, 1=Mon, ..., 6=Sat.
     For gpu/cpu/ram: avg_util and peak_util are fractions (0.0–1.0) of capacity.
     For pods: avg_util and peak_util are raw counts; capacity is None.
+    tz_offset_minutes shifts UTC timestamps before dow/hour extraction.
     """
     col_req, col_total = _HEATMAP_METRICS[metric]
+    tz_mod = f"{tz_offset_minutes:+d} minutes"
 
     if col_total is not None:
         if lab:
             sql = f"""
                 SELECT
-                    CAST(strftime('%w', timestamp) AS INTEGER) AS dow,
-                    CAST(strftime('%H', timestamp) AS INTEGER) AS hour,
+                    CAST(strftime('%w', datetime(timestamp, '{tz_mod}')) AS INTEGER) AS dow,
+                    CAST(strftime('%H', datetime(timestamp, '{tz_mod}')) AS INTEGER) AS hour,
                     AVG(CAST({col_req} AS REAL) / NULLIF({col_total}, 0)) AS avg_util,
                     MAX(CAST({col_req} AS REAL) / NULLIF({col_total}, 0)) AS peak_util,
                     MAX({col_total}) AS capacity
@@ -442,8 +445,8 @@ def query_heatmap(
         else:
             sql = f"""
                 SELECT
-                    CAST(strftime('%w', t) AS INTEGER) AS dow,
-                    CAST(strftime('%H', t) AS INTEGER) AS hour,
+                    CAST(strftime('%w', datetime(t, '{tz_mod}')) AS INTEGER) AS dow,
+                    CAST(strftime('%H', datetime(t, '{tz_mod}')) AS INTEGER) AS hour,
                     AVG(CAST(agg_req AS REAL) / NULLIF(agg_total, 0)) AS avg_util,
                     MAX(CAST(agg_req AS REAL) / NULLIF(agg_total, 0)) AS peak_util,
                     MAX(agg_total) AS capacity
@@ -462,8 +465,8 @@ def query_heatmap(
         if lab:
             sql = f"""
                 SELECT
-                    CAST(strftime('%w', timestamp) AS INTEGER) AS dow,
-                    CAST(strftime('%H', timestamp) AS INTEGER) AS hour,
+                    CAST(strftime('%w', datetime(timestamp, '{tz_mod}')) AS INTEGER) AS dow,
+                    CAST(strftime('%H', datetime(timestamp, '{tz_mod}')) AS INTEGER) AS hour,
                     AVG(CAST({col_req} AS REAL)) AS avg_util,
                     MAX({col_req}) AS peak_util,
                     NULL AS capacity
@@ -475,8 +478,8 @@ def query_heatmap(
         else:
             sql = f"""
                 SELECT
-                    CAST(strftime('%w', t) AS INTEGER) AS dow,
-                    CAST(strftime('%H', t) AS INTEGER) AS hour,
+                    CAST(strftime('%w', datetime(t, '{tz_mod}')) AS INTEGER) AS dow,
+                    CAST(strftime('%H', datetime(t, '{tz_mod}')) AS INTEGER) AS hour,
                     AVG(CAST(agg_req AS REAL)) AS avg_util,
                     MAX(agg_req) AS peak_util,
                     NULL AS capacity

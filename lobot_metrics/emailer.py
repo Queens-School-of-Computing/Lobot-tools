@@ -17,14 +17,16 @@ from .config import (
     DB_PATH,
     EMAIL_ENABLED,
     FROM_EMAIL,
+    HEATMAP_TIMEZONE_NAME,
     SMTP_PASSWORD,
     SMTP_PORT,
     SMTP_SERVER,
     SMTP_USE_TLS,
     SMTP_USERNAME,
     TO_EMAIL,
+    heatmap_tz_offset_minutes,
 )
-from .db import open_db
+from .db import open_db, query_heatmap
 from .reporter import (
     _COLUMN_HEADERS,
     _month_bounds,
@@ -121,6 +123,81 @@ def _build_table(rows: list[dict], columns: list[str], title: str) -> str:
     )
 
 
+# ── Heatmap ────────────────────────────────────────────────────────────────────
+
+_HM_COLORS = ["#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"]
+_HM_DOW_ORDER = [1, 2, 3, 4, 5, 6, 0]
+_HM_DOW_NAMES = {0: "Sun", 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat"}
+
+
+def _hm_color(util: float) -> str:
+    if util <= 0:   return _HM_COLORS[0]
+    if util <= 0.25: return _HM_COLORS[1]
+    if util <= 0.50: return _HM_COLORS[2]
+    if util <= 0.75: return _HM_COLORS[3]
+    return _HM_COLORS[4]
+
+
+def _build_heatmap_html(rows: list[dict], metric: str, title: str) -> str:
+    if not rows:
+        return f"<h3>{title}</h3><p><em>No snapshot data for this period.</em></p>"
+
+    grid = {(r["dow"], r["hour"]): r for r in rows}
+
+    if metric == "pods":
+        max_val = max(r["avg_util"] or 0 for r in rows) or 1
+        def util_frac(d, h):
+            r = grid.get((d, h))
+            return (r["avg_util"] or 0) / max_val if r else 0
+    else:
+        def util_frac(d, h):
+            r = grid.get((d, h))
+            return r["avg_util"] or 0 if r else 0
+
+    peak_row = max(rows, key=lambda r: r["peak_util"] or 0)
+    dow_name = _HM_DOW_NAMES[peak_row["dow"]]
+    capacity = peak_row.get("capacity")
+    if metric == "pods":
+        peak_note = f"Peak: {int(peak_row['peak_util'])} pods — {dow_name} {peak_row['hour']:02d}:00 {HEATMAP_TIMEZONE_NAME}"
+    else:
+        peak_pct = (peak_row["peak_util"] or 0) * 100
+        if capacity:
+            peak_abs = (peak_row["peak_util"] or 0) * capacity
+            units = {"gpu": "GPUs", "cpu": "cores", "ram": "GB"}[metric]
+            peak_note = f"Peak: {peak_pct:.0f}% ({peak_abs:.0f}/{capacity:.0f} {units}) — {dow_name} {peak_row['hour']:02d}:00 {HEATMAP_TIMEZONE_NAME}"
+        else:
+            peak_note = f"Peak: {peak_pct:.0f}% — {dow_name} {peak_row['hour']:02d}:00 {HEATMAP_TIMEZONE_NAME}"
+
+    cell = "width:16px;height:16px;border-radius:2px"
+    lbl  = "font-size:10px;color:#666;padding-right:5px;text-align:right;white-space:nowrap;vertical-align:middle"
+
+    header = '<td style="width:36px"></td>' + "".join(
+        f'<td style="font-size:10px;color:#666;text-align:center;padding-bottom:3px">{_HM_DOW_NAMES[d]}</td>'
+        for d in _HM_DOW_ORDER
+    )
+    data_rows = ""
+    for hour in range(24):
+        cells = f'<td style="{lbl}">{hour:02d}:00</td>'
+        for d in _HM_DOW_ORDER:
+            cells += f'<td style="{cell};background:{_hm_color(util_frac(d, hour))}"></td>'
+        data_rows += f"<tr>{cells}</tr>"
+
+    legend = "".join(
+        f'<span style="display:inline-block;width:12px;height:12px;background:{c};border-radius:2px;margin:0 1px;vertical-align:middle"></span>'
+        for c in _HM_COLORS
+    )
+
+    return (
+        f"<h3 style='margin-bottom:6px'>{title}</h3>"
+        f'<table style="border-collapse:separate;border-spacing:2px;font-family:monospace">'
+        f"<tr>{header}</tr>{data_rows}"
+        f"</table>"
+        f'<p style="font-size:11px;color:#555;margin-top:4px">'
+        f"Less {legend} More &nbsp;|&nbsp; {peak_note}"
+        f"</p>"
+    )
+
+
 def build_monthly_html(
     year: int,
     month: int,
@@ -130,6 +207,7 @@ def build_monthly_html(
     storage_group: list[dict],
     storage_user: list[dict],
     month_label: str,
+    heatmaps: Optional[dict] = None,
 ) -> str:
     group_table = _build_table(
         by_group,
@@ -163,6 +241,28 @@ def build_monthly_html(
         "Storage Allocation — By User",
     )
 
+    hm = heatmaps or {}
+    heatmap_section = ""
+    if hm:
+        gpu_hm  = _build_heatmap_html(hm.get("gpu",  []), "gpu",  "GPU Utilization")
+        pods_hm = _build_heatmap_html(hm.get("pods", []), "pods", "Active Pods")
+        cpu_hm  = _build_heatmap_html(hm.get("cpu",  []), "cpu",  "CPU Utilization")
+        ram_hm  = _build_heatmap_html(hm.get("ram",  []), "ram",  "RAM Utilization")
+        heatmap_section = f"""
+  <hr>
+  <h2>Utilization Patterns</h2>
+  <p style="color:#555;font-size:12px">Average utilization by hour of day and day of week. All times {HEATMAP_TIMEZONE_NAME}.</p>
+  <table style="width:100%;border-collapse:collapse">
+    <tr>
+      <td style="width:50%;vertical-align:top;padding-right:24px">{gpu_hm}</td>
+      <td style="width:50%;vertical-align:top">{pods_hm}</td>
+    </tr>
+    <tr>
+      <td style="width:50%;vertical-align:top;padding-right:24px">{cpu_hm}</td>
+      <td style="width:50%;vertical-align:top">{ram_hm}</td>
+    </tr>
+  </table>"""
+
     return f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><title>Lobot Metrics: {month_label}</title></head>
@@ -188,6 +288,7 @@ def build_monthly_html(
   <hr>
   {user_table}
   {storage_user_table}
+  {heatmap_section}
   <p style="color:#999;font-size:11px">
     Compute: only sessions that started and ended within {month_label} are counted.
     Sessions still running at report time are excluded.
@@ -218,6 +319,13 @@ def send_monthly_digest(
         rows_group = usage_by_group(conn, year, month, billing)
         rows_storage_user = storage_by_user(conn, year, month)
         rows_storage_group = storage_by_group(conn, year, month, billing)
+        from .reporter import _month_bounds
+        start, end = _month_bounds(year, month)
+        tz_offset = heatmap_tz_offset_minutes(year, month)
+        heatmaps = {
+            m: query_heatmap(conn, start, end, metric=m, tz_offset_minutes=tz_offset)
+            for m in ("gpu", "cpu", "ram", "pods")
+        }
     finally:
         conn.close()
 
@@ -226,6 +334,7 @@ def send_monthly_digest(
         rows_lab, rows_group, rows_user,
         rows_storage_group, rows_storage_user,
         month_label,
+        heatmaps=heatmaps,
     )
     subject = f"Monthly Usage Report — {month_label}"
     _smtp_send(subject, html, to=to)

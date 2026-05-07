@@ -4,6 +4,23 @@ import os
 import socket
 from pathlib import Path
 
+try:
+    from zoneinfo import ZoneInfo as _ZI
+    _tz_name = os.environ.get("LOBOT_TIMEZONE", "America/Toronto")
+    HEATMAP_TIMEZONE = _ZI(_tz_name)
+    HEATMAP_TIMEZONE_NAME = _tz_name
+except Exception:
+    from datetime import timezone as _fallback
+    HEATMAP_TIMEZONE = _fallback.utc  # type: ignore[assignment]
+    HEATMAP_TIMEZONE_NAME = "UTC"
+
+
+def heatmap_tz_offset_minutes(year: int, month: int) -> int:
+    """UTC offset in minutes for the heatmap timezone, representative for the given month."""
+    from datetime import datetime, timezone as _tz
+    mid = datetime(year, month, 15, tzinfo=_tz.utc)
+    return int(mid.astimezone(HEATMAP_TIMEZONE).utcoffset().total_seconds() // 60)
+
 # ── Collector endpoints ────────────────────────────────────────────────────────
 COLLECTOR_SSE_URL = "http://127.0.0.1:9095/api/events"
 COLLECTOR_STATE_URL = "http://127.0.0.1:9095/api/state"
