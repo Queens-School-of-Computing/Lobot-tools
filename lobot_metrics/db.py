@@ -80,6 +80,21 @@ CREATE TABLE IF NOT EXISTS storage_snapshots (
 
 CREATE INDEX IF NOT EXISTS idx_storage_snapshots_ts
     ON storage_snapshots (timestamp);
+
+CREATE TABLE IF NOT EXISTS pvc_snapshots (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp     TEXT NOT NULL,
+    username      TEXT NOT NULL,
+    pvc_name      TEXT NOT NULL,
+    namespace     TEXT NOT NULL DEFAULT 'jhub',
+    capacity_gb   REAL NOT NULL,
+    storage_class TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_pvc_snapshots_ts
+    ON pvc_snapshots (timestamp);
+CREATE INDEX IF NOT EXISTS idx_pvc_snapshots_username
+    ON pvc_snapshots (username);
 """
 
 
@@ -219,6 +234,48 @@ def insert_storage_snapshot(
         (timestamp, node_name, disk_name,
          total_gb, available_gb, scheduled_gb),
     )
+
+
+def insert_pvc_snapshot(
+    conn: sqlite3.Connection,
+    timestamp: str,
+    username: str,
+    pvc_name: str,
+    namespace: str,
+    capacity_gb: float,
+    storage_class: Optional[str],
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO pvc_snapshots
+            (timestamp, username, pvc_name, namespace, capacity_gb, storage_class)
+        VALUES (?,?,?,?,?,?)
+        """,
+        (timestamp, username, pvc_name, namespace, capacity_gb, storage_class),
+    )
+
+
+def query_storage_by_user(
+    conn: sqlite3.Connection,
+    start_iso: str,
+    end_iso: str,
+) -> list[dict]:
+    """Average PVC allocation per user over the period (GB)."""
+    rows = conn.execute(
+        """
+        SELECT
+            username,
+            pvc_name,
+            ROUND(AVG(capacity_gb), 2) AS avg_capacity_gb,
+            COUNT(*) AS snapshot_count
+        FROM pvc_snapshots
+        WHERE timestamp >= ? AND timestamp < ?
+        GROUP BY username, pvc_name
+        ORDER BY username
+        """,
+        (start_iso, end_iso),
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 # ── Queries ────────────────────────────────────────────────────────────────────

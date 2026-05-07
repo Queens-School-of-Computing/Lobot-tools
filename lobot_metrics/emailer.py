@@ -28,6 +28,8 @@ from .db import open_db
 from .reporter import (
     _COLUMN_HEADERS,
     _month_bounds,
+    storage_by_group,
+    storage_by_user,
     usage_by_group,
     usage_by_lab,
     usage_by_user,
@@ -125,25 +127,37 @@ def build_monthly_html(
     by_lab: list[dict],
     by_group: list[dict],
     by_user: list[dict],
+    storage_group: list[dict],
+    storage_user: list[dict],
     month_label: str,
 ) -> str:
     group_table = _build_table(
         by_group,
         ["display_name", "user_count", "session_count", "total_hours",
          "cpu_core_hours", "ram_gb_hours", "gpu_hours"],
-        "By Billing Group",
+        "Compute — By Billing Group",
     )
     lab_table = _build_table(
         by_lab,
         ["lab", "user_count", "session_count", "total_hours",
          "cpu_core_hours", "ram_gb_hours", "gpu_hours"],
-        "By Lab",
+        "Compute — By Lab",
     )
     user_table = _build_table(
         by_user,
         ["username", "lab", "session_count", "total_hours",
          "cpu_core_hours", "ram_gb_hours", "gpu_hours", "avg_cpu", "avg_ram_gb", "avg_gpu"],
-        "By User",
+        "Compute — By User",
+    )
+    storage_group_table = _build_table(
+        storage_group,
+        ["display_name", "user_count", "total_avg_gb"],
+        "Storage Allocation — By Billing Group",
+    )
+    storage_user_table = _build_table(
+        storage_user,
+        ["username", "pvc_name", "avg_capacity_gb"],
+        "Storage Allocation — By User",
     )
 
     return f"""<!DOCTYPE html>
@@ -153,18 +167,28 @@ def build_monthly_html(
   <h2>Lobot Cluster Usage Report — {month_label}</h2>
   <p style="color:#555">Generated {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} on {os.uname().nodename}</p>
   <p>
-    <strong>Metric definitions:</strong>
+    <strong>Compute metrics:</strong>
     <em>CPU-core-hrs</em> = requested cores × session hours &nbsp;|&nbsp;
     <em>RAM-GB-hrs</em> = requested GB × session hours &nbsp;|&nbsp;
     <em>GPU-hrs</em> = requested GPUs × session hours
   </p>
+  <p>
+    <strong>Storage metrics:</strong>
+    <em>Avg PVC GB</em> = average home directory allocation over the month
+    (sampled every 15 minutes)
+  </p>
   <hr>
   {group_table}
+  {storage_group_table}
+  <hr>
   {lab_table}
+  <hr>
   {user_table}
+  {storage_user_table}
   <p style="color:#999;font-size:11px">
-    Only sessions that started and ended within {month_label} are counted.
+    Compute: only sessions that started and ended within {month_label} are counted.
     Sessions still running at report time are excluded.
+    Storage: average PVC allocation from snapshots taken during {month_label}.
   </p>
 </body>
 </html>"""
@@ -189,10 +213,17 @@ def send_monthly_digest(
         rows_user = usage_by_user(conn, year, month)
         rows_lab = usage_by_lab(conn, year, month)
         rows_group = usage_by_group(conn, year, month, billing)
+        rows_storage_user = storage_by_user(conn, year, month)
+        rows_storage_group = storage_by_group(conn, year, month, billing)
     finally:
         conn.close()
 
-    html = build_monthly_html(year, month, rows_lab, rows_group, rows_user, month_label)
+    html = build_monthly_html(
+        year, month,
+        rows_lab, rows_group, rows_user,
+        rows_storage_group, rows_storage_user,
+        month_label,
+    )
     subject = f"Monthly Usage Report — {month_label}"
     _smtp_send(subject, html, to=to)
 

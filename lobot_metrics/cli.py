@@ -32,12 +32,15 @@ def cmd_report(args: argparse.Namespace) -> None:
     from .db import open_db
     from .reporter import (
         format_table,
+        storage_by_group,
+        storage_by_user,
         usage_by_group,
         usage_by_lab,
         usage_by_user,
     )
 
     year, month = args.month
+    month_label = f"{year:04d}-{month:02d}"
     conn = open_db(DB_PATH)
     try:
         if args.by == "user":
@@ -45,21 +48,29 @@ def cmd_report(args: argparse.Namespace) -> None:
             cols = ["username", "lab", "session_count", "total_hours",
                     "cpu_core_hours", "ram_gb_hours", "gpu_hours",
                     "avg_cpu", "avg_ram_gb", "avg_gpu"]
+            storage_rows = storage_by_user(conn, year, month)
+            storage_cols = ["username", "pvc_name", "avg_capacity_gb"]
         elif args.by == "lab":
             rows = usage_by_lab(conn, year, month)
             cols = ["lab", "user_count", "session_count", "total_hours",
                     "cpu_core_hours", "ram_gb_hours", "gpu_hours"]
+            storage_rows = []
+            storage_cols = []
         else:  # group
             billing = load_billing_config(BILLING_CONFIG_PATH)
             rows = usage_by_group(conn, year, month, billing)
             cols = ["display_name", "user_count", "session_count", "total_hours",
                     "cpu_core_hours", "ram_gb_hours", "gpu_hours"]
+            storage_rows = storage_by_group(conn, year, month, billing)
+            storage_cols = ["display_name", "user_count", "total_avg_gb"]
     finally:
         conn.close()
 
-    month_label = f"{year:04d}-{month:02d}"
     print(f"\nLobot Cluster Usage — {month_label} — by {args.by}\n")
     print(format_table(rows, cols))
+    if storage_cols:
+        print(f"Storage Allocation — {month_label} — by {args.by}\n")
+        print(format_table(storage_rows, storage_cols))
 
 
 def cmd_export(args: argparse.Namespace) -> None:

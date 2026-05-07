@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from .billing import BillingConfig
-from .db import query_usage_by_lab, query_usage_by_user
+from .db import query_storage_by_user, query_usage_by_lab, query_usage_by_user
 
 
 def _month_bounds(year: int, month: int) -> tuple[str, str]:
@@ -93,6 +93,10 @@ _COLUMN_HEADERS = {
     "avg_cpu": "Avg CPU",
     "avg_ram_gb": "Avg RAM GB",
     "avg_gpu": "Avg GPU",
+    "avg_capacity_gb": "Avg PVC GB",
+    "snapshot_count": "Samples",
+    "total_avg_gb": "Total PVC GB",
+    "pvc_name": "PVC",
 }
 
 
@@ -138,6 +142,40 @@ def format_table(rows: list[dict], columns: list[str]) -> str:
         for row in rows
     ]
     return "\n".join([header_line, sep] + data_lines) + "\n"
+
+
+def storage_by_user(
+    conn: sqlite3.Connection,
+    year: int,
+    month: int,
+) -> list[dict]:
+    """Per-user average PVC allocation for the month."""
+    start, end = _month_bounds(year, month)
+    return query_storage_by_user(conn, start, end)
+
+
+def storage_by_group(
+    conn: sqlite3.Connection,
+    year: int,
+    month: int,
+    billing: BillingConfig,
+) -> list[dict]:
+    """Per-billing-group total average PVC allocation (GB)."""
+    rows = storage_by_user(conn, year, month)
+    groups: dict[str, dict] = {}
+    for row in rows:
+        key = billing.resolve_group(row["username"], "") or "unassigned"
+        if key not in groups:
+            groups[key] = {
+                "group": key,
+                "display_name": billing.get_display_name(key),
+                "user_count": 0,
+                "total_avg_gb": 0.0,
+            }
+        g = groups[key]
+        g["user_count"] += 1
+        g["total_avg_gb"] = round(g["total_avg_gb"] + (row["avg_capacity_gb"] or 0.0), 2)
+    return sorted(groups.values(), key=lambda x: x["total_avg_gb"], reverse=True)
 
 
 def export_csv(rows: list[dict], columns: list[str], out_path: Path) -> None:
