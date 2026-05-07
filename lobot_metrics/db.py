@@ -400,6 +400,99 @@ def query_usage_by_lab(
     return [dict(row) for row in rows]
 
 
+# ── Heatmap ────────────────────────────────────────────────────────────────────
+
+_HEATMAP_METRICS = {
+    "gpu": ("gpu_requested", "gpu_total"),
+    "cpu": ("cpu_requested", "cpu_total"),
+    "ram": ("ram_requested_gb", "ram_total_gb"),
+    "pods": ("pod_count", None),
+}
+
+
+def query_heatmap(
+    conn: sqlite3.Connection,
+    start_iso: str,
+    end_iso: str,
+    metric: str = "gpu",
+    lab: Optional[str] = None,
+) -> list[dict]:
+    """
+    Returns avg/peak utilization per (dow, hour) from resource_snapshots.
+    dow follows strftime %w: 0=Sun, 1=Mon, ..., 6=Sat.
+    For gpu/cpu/ram: avg_util and peak_util are fractions (0.0–1.0) of capacity.
+    For pods: avg_util and peak_util are raw counts; capacity is None.
+    """
+    col_req, col_total = _HEATMAP_METRICS[metric]
+
+    if col_total is not None:
+        if lab:
+            sql = f"""
+                SELECT
+                    CAST(strftime('%w', timestamp) AS INTEGER) AS dow,
+                    CAST(strftime('%H', timestamp) AS INTEGER) AS hour,
+                    AVG(CAST({col_req} AS REAL) / NULLIF({col_total}, 0)) AS avg_util,
+                    MAX(CAST({col_req} AS REAL) / NULLIF({col_total}, 0)) AS peak_util,
+                    MAX({col_total}) AS capacity
+                FROM resource_snapshots
+                WHERE timestamp >= ? AND timestamp < ? AND lab = ?
+                GROUP BY dow, hour
+            """
+            params: tuple = (start_iso, end_iso, lab)
+        else:
+            sql = f"""
+                SELECT
+                    CAST(strftime('%w', t) AS INTEGER) AS dow,
+                    CAST(strftime('%H', t) AS INTEGER) AS hour,
+                    AVG(CAST(agg_req AS REAL) / NULLIF(agg_total, 0)) AS avg_util,
+                    MAX(CAST(agg_req AS REAL) / NULLIF(agg_total, 0)) AS peak_util,
+                    MAX(agg_total) AS capacity
+                FROM (
+                    SELECT timestamp AS t,
+                        SUM({col_req}) AS agg_req,
+                        SUM({col_total}) AS agg_total
+                    FROM resource_snapshots
+                    WHERE timestamp >= ? AND timestamp < ?
+                    GROUP BY timestamp
+                )
+                GROUP BY dow, hour
+            """
+            params = (start_iso, end_iso)
+    else:
+        if lab:
+            sql = f"""
+                SELECT
+                    CAST(strftime('%w', timestamp) AS INTEGER) AS dow,
+                    CAST(strftime('%H', timestamp) AS INTEGER) AS hour,
+                    AVG(CAST({col_req} AS REAL)) AS avg_util,
+                    MAX({col_req}) AS peak_util,
+                    NULL AS capacity
+                FROM resource_snapshots
+                WHERE timestamp >= ? AND timestamp < ? AND lab = ?
+                GROUP BY dow, hour
+            """
+            params = (start_iso, end_iso, lab)
+        else:
+            sql = f"""
+                SELECT
+                    CAST(strftime('%w', t) AS INTEGER) AS dow,
+                    CAST(strftime('%H', t) AS INTEGER) AS hour,
+                    AVG(CAST(agg_req AS REAL)) AS avg_util,
+                    MAX(agg_req) AS peak_util,
+                    NULL AS capacity
+                FROM (
+                    SELECT timestamp AS t, SUM({col_req}) AS agg_req
+                    FROM resource_snapshots
+                    WHERE timestamp >= ? AND timestamp < ?
+                    GROUP BY timestamp
+                )
+                GROUP BY dow, hour
+            """
+            params = (start_iso, end_iso)
+
+    return [dict(row) for row in conn.execute(sql, params).fetchall()]
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _now_iso() -> str:

@@ -163,6 +163,21 @@ sudo systemctl list-timers lobot-metrics-digest.timer</code></pre>
 ./lobot-metrics.sh export --month 2026-05 --by group --out /tmp/usage-group.csv</code></pre>
 <p>CSV columns match the report columns for the chosen grouping, including <code>pvc_capacity_gb</code>.</p>
 
+<h3>heatmap — ASCII utilization heatmap</h3>
+<p>Shows average resource utilization by hour of day and day of week, drawn from the 15-minute periodic snapshots.</p>
+<pre><code># GPU utilization across all labs (default)
+./lobot-metrics.sh heatmap --month 2026-05
+
+# Specific metric
+./lobot-metrics.sh heatmap --month 2026-05 --metric cpu
+./lobot-metrics.sh heatmap --month 2026-05 --metric ram
+./lobot-metrics.sh heatmap --month 2026-05 --metric pods
+
+# Filter to one lab
+./lobot-metrics.sh heatmap --month 2026-05 --metric gpu --lab quarrglab</code></pre>
+<p>Each cell shows the <strong>average</strong> utilization for that hour/day slot across the month, using block characters: <code>·</code> 0% &nbsp; <code>░</code> 1–25% &nbsp; <code>▒</code> 26–50% &nbsp; <code>▓</code> 51–75% &nbsp; <code>█</code> 76–100%. The peak line shows the single highest observed snapshot. All times are UTC (Eastern = UTC−4/UTC−5).</p>
+<p>Requires at least one 15-minute snapshot cycle in the period.</p>
+
 <h3>send-digest — Send the monthly email digest</h3>
 <pre><code># Previous month (default)
 ./lobot-metrics.sh send-digest

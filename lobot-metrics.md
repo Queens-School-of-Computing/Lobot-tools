@@ -210,6 +210,51 @@ Only sessions that both started **and** ended within the month are counted. Sess
 
 CSV columns match the report columns for the chosen grouping, including `pvc_capacity_gb`.
 
+### `heatmap` — ASCII utilization heatmap
+
+Shows average resource utilization by hour of day and day of week, drawn from the 15-minute periodic snapshots.
+
+```bash
+# GPU utilization across all labs (default)
+./lobot-metrics.sh heatmap --month 2026-05
+
+# Specific metric
+./lobot-metrics.sh heatmap --month 2026-05 --metric cpu
+./lobot-metrics.sh heatmap --month 2026-05 --metric ram
+./lobot-metrics.sh heatmap --month 2026-05 --metric pods
+
+# Filter to one lab
+./lobot-metrics.sh heatmap --month 2026-05 --metric gpu --lab quarrglab
+```
+
+Example output:
+```
+GPU Utilization Heatmap — 2026-05 (all labs)
+
+        Mon  Tue  Wed  Thu  Fri  Sat  Sun
+ 0:00    ·    ·    ·    ·    ·    ·    ·
+ 1:00    ·    ·    ·    ·    ·    ·    ·
+ ...
+ 9:00    ▒    ▓    ▒    ▒    ▒    ·    ·
+10:00    ▓    █    █    ▓    ▓    ·    ·
+11:00    █    █    █    █    ▓    ·    ·
+12:00    ▓    █    ▓    ▓    ▓    ·    ·
+13:00    █    █    █    █    █    ·    ·
+14:00    █    █    █    █    ▓    ·    ·
+15:00    ▓    ▓    ▓    ▓    ▒    ·    ·
+16:00    ▒    ▒    ▒    ▒    ░    ·    ·
+17:00    ░    ░    ░    ·    ·    ·    ·
+...
+23:00    ·    ·    ·    ·    ·    ·    ·
+
+Legend:  · 0%   ░ 1–25%   ▒ 26–50%   ▓ 51–75%   █ 76–100%
+Peak:    100%  (8/8 GPUs) — Tue 10:00 UTC
+```
+
+Each cell shows the **average** utilization for that hour/day slot across the month. The peak line shows the single highest observed snapshot. All times are UTC (Eastern = UTC−4/UTC−5).
+
+Requires at least one 15-minute snapshot cycle in the period. If the daemon was just installed, run it for at least 15 minutes before querying.
+
 ### `send-digest` — Send the monthly email digest
 
 ```bash

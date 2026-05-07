@@ -232,6 +232,91 @@ def cmd_daemon(_args: argparse.Namespace) -> None:
     asyncio.run(_run())
 
 
+_DOW_ORDER = [1, 2, 3, 4, 5, 6, 0]  # Mon..Sun (strftime %w: 0=Sun)
+_DOW_LABELS = {0: "Sun", 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat"}
+
+
+def _heatmap_char(util: float) -> str:
+    if util == 0:
+        return "·"
+    if util <= 0.25:
+        return "░"
+    if util <= 0.50:
+        return "▒"
+    if util <= 0.75:
+        return "▓"
+    return "█"
+
+
+def cmd_heatmap(args: argparse.Namespace) -> None:
+    from .config import DB_PATH
+    from .db import open_db, query_heatmap
+    from .reporter import _month_bounds
+
+    year, month = args.month
+    month_label = f"{year:04d}-{month:02d}"
+    metric = args.metric
+    lab = args.lab or None
+
+    start, end = _month_bounds(year, month)
+    conn = open_db(DB_PATH)
+    try:
+        rows = query_heatmap(conn, start, end, metric=metric, lab=lab)
+    finally:
+        conn.close()
+
+    if not rows:
+        print(f"\n(no snapshot data for {month_label} — the daemon must run for at least one snapshot interval)\n")
+        return
+
+    grid = {(r["dow"], r["hour"]): r for r in rows}
+
+    if metric == "pods":
+        max_val = max(r["avg_util"] or 0 for r in rows) or 1
+        def norm(d, h):
+            r = grid.get((d, h))
+            return (r["avg_util"] or 0) / max_val if r else 0
+    else:
+        def norm(d, h):
+            r = grid.get((d, h))
+            return r["avg_util"] or 0 if r else 0
+
+    peak_row = max(rows, key=lambda r: r["peak_util"] or 0)
+
+    metric_titles = {
+        "gpu": "GPU Utilization",
+        "cpu": "CPU Utilization",
+        "ram": "RAM Utilization",
+        "pods": "Active Pods",
+    }
+    lab_label = f" ({lab})" if lab else " (all labs)"
+    print(f"\n{metric_titles[metric]} Heatmap — {month_label}{lab_label}\n")
+
+    col_w = 5
+    print("       " + "".join(f"{_DOW_LABELS[d]:^{col_w}}" for d in _DOW_ORDER))
+    for hour in range(24):
+        cells = "".join(f"{_heatmap_char(norm(d, hour)):^{col_w}}" for d in _DOW_ORDER)
+        print(f"{hour:2d}:00  {cells}")
+
+    print()
+    print("Legend:  · 0%   ░ 1–25%   ▒ 26–50%   ▓ 51–75%   █ 76–100%")
+
+    dow_name = _DOW_LABELS[peak_row["dow"]]
+    hour_str = f"{peak_row['hour']:02d}:00 UTC"
+    capacity = peak_row.get("capacity")
+    if metric == "pods":
+        print(f"Peak:    {int(peak_row['peak_util'])} pods — {dow_name} {hour_str}")
+    else:
+        peak_pct = (peak_row["peak_util"] or 0) * 100
+        if capacity:
+            peak_abs = (peak_row["peak_util"] or 0) * capacity
+            units = {"gpu": "GPUs", "cpu": "cores", "ram": "GB"}[metric]
+            print(f"Peak:    {peak_pct:.0f}%  ({peak_abs:.0f}/{capacity:.0f} {units}) — {dow_name} {hour_str}")
+        else:
+            print(f"Peak:    {peak_pct:.0f}% — {dow_name} {hour_str}")
+    print()
+
+
 # ── Parser ─────────────────────────────────────────────────────────────────────
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -272,6 +357,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_digest.add_argument("--to", metavar="EMAIL", help="Override recipient address")
 
+    # heatmap
+    p_heatmap = sub.add_parser("heatmap", help="Show resource utilization heatmap (hour × day-of-week)")
+    p_heatmap.add_argument("--month", required=True, type=_parse_month, metavar="YYYY-MM")
+    p_heatmap.add_argument(
+        "--metric", choices=["gpu", "cpu", "ram", "pods"], default="gpu",
+        help="Metric to visualize (default: gpu)",
+    )
+    p_heatmap.add_argument("--lab", metavar="LAB", help="Filter to a specific lab (default: all labs combined)")
+
     # daemon (explicit)
     sub.add_parser("daemon", help="Start the recorder daemon (default when no command given)")
 
@@ -292,6 +386,8 @@ def main() -> None:
         cmd_sessions(args)
     elif args.command == "send-digest":
         cmd_send_digest(args)
+    elif args.command == "heatmap":
+        cmd_heatmap(args)
     else:
         parser.print_help()
         sys.exit(1)
