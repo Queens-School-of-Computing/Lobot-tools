@@ -41,36 +41,49 @@ def cmd_report(args: argparse.Namespace) -> None:
 
     year, month = args.month
     month_label = f"{year:04d}-{month:02d}"
+    by = args.by  # None means print all sections
+    billing = load_billing_config(BILLING_CONFIG_PATH)
+
     conn = open_db(DB_PATH)
     try:
-        if args.by == "user":
-            rows = usage_by_user(conn, year, month)
-            cols = ["username", "lab", "session_count", "total_hours",
-                    "cpu_core_hours", "ram_gb_hours", "gpu_hours",
-                    "avg_cpu", "avg_ram_gb", "avg_gpu"]
-            storage_rows = storage_by_user(conn, year, month)
-            storage_cols = ["username", "pvc_name", "avg_capacity_gb"]
-        elif args.by == "lab":
-            rows = usage_by_lab(conn, year, month)
-            cols = ["lab", "user_count", "session_count", "total_hours",
-                    "cpu_core_hours", "ram_gb_hours", "gpu_hours"]
-            storage_rows = []
-            storage_cols = []
-        else:  # group
-            billing = load_billing_config(BILLING_CONFIG_PATH)
-            rows = usage_by_group(conn, year, month, billing)
-            cols = ["display_name", "user_count", "session_count", "total_hours",
-                    "cpu_core_hours", "ram_gb_hours", "gpu_hours"]
-            storage_rows = storage_by_group(conn, year, month, billing)
-            storage_cols = ["display_name", "user_count", "total_avg_gb"]
+        rows_user = usage_by_user(conn, year, month) if by in (None, "user") else None
+        rows_lab = usage_by_lab(conn, year, month) if by in (None, "lab") else None
+        rows_group = usage_by_group(conn, year, month, billing) if by in (None, "group") else None
+        storage_user = storage_by_user(conn, year, month) if by in (None, "user") else None
+        storage_group = storage_by_group(conn, year, month, billing) if by in (None, "group") else None
     finally:
         conn.close()
 
-    print(f"\nLobot Cluster Usage — {month_label} — by {args.by}\n")
-    print(format_table(rows, cols))
-    if storage_cols:
-        print(f"Storage Allocation — {month_label} — by {args.by}\n")
-        print(format_table(storage_rows, storage_cols))
+    print(f"\nLobot Cluster Usage — {month_label}\n")
+
+    if rows_group is not None:
+        print("── By Billing Group ──\n")
+        print(format_table(rows_group,
+            ["display_name", "user_count", "session_count", "total_hours",
+             "cpu_core_hours", "ram_gb_hours", "gpu_hours"]))
+
+    if rows_lab is not None:
+        print("── By Lab ──\n")
+        print(format_table(rows_lab,
+            ["lab", "user_count", "session_count", "total_hours",
+             "cpu_core_hours", "ram_gb_hours", "gpu_hours"]))
+
+    if rows_user is not None:
+        print("── By User ──\n")
+        print(format_table(rows_user,
+            ["username", "lab", "session_count", "total_hours",
+             "cpu_core_hours", "ram_gb_hours", "gpu_hours",
+             "avg_cpu", "avg_ram_gb", "avg_gpu"]))
+
+    if storage_group is not None:
+        print("── Storage by Billing Group ──\n")
+        print(format_table(storage_group,
+            ["display_name", "user_count", "total_avg_gb"]))
+
+    if storage_user is not None:
+        print("── Storage by User ──\n")
+        print(format_table(storage_user,
+            ["username", "pvc_name", "avg_capacity_gb"]))
 
 
 def cmd_export(args: argparse.Namespace) -> None:
@@ -228,8 +241,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_report = sub.add_parser("report", help="Print usage report for a month")
     p_report.add_argument("--month", required=True, type=_parse_month, metavar="YYYY-MM")
     p_report.add_argument(
-        "--by", choices=["user", "lab", "group"], default="user",
-        help="Group results by user, lab, or billing group (default: user)",
+        "--by", choices=["user", "lab", "group"], default=None,
+        help="Group results by user, lab, or group (default: all three)",
     )
 
     # export
