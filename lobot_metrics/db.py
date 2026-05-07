@@ -336,7 +336,8 @@ def query_usage_by_user(
             ROUND(SUM(duration_seconds * ram_requested_gb) / 3600.0, 2) AS ram_gb_hours,
             ROUND(AVG(cpu_requested), 1) AS avg_cpu,
             ROUND(AVG(ram_requested_gb), 1) AS avg_ram_gb,
-            ROUND(AVG(gpu_requested), 2) AS avg_gpu
+            ROUND(AVG(gpu_requested), 2) AS avg_gpu,
+            MAX(pvc_capacity_gb) AS pvc_capacity_gb
         FROM sessions
         WHERE {where}
         GROUP BY username, lab

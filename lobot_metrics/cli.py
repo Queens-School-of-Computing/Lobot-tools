@@ -73,7 +73,7 @@ def cmd_report(args: argparse.Namespace) -> None:
         print(format_table(rows_user,
             ["username", "lab", "session_count", "total_hours",
              "cpu_core_hours", "ram_gb_hours", "gpu_hours",
-             "avg_cpu", "avg_ram_gb", "avg_gpu"]))
+             "avg_cpu", "avg_ram_gb", "avg_gpu", "pvc_capacity_gb"]))
 
     if storage_group is not None:
         print("── Storage by Billing Group ──\n")
@@ -105,7 +105,7 @@ def cmd_export(args: argparse.Namespace) -> None:
             rows = usage_by_user(conn, year, month)
             cols = ["username", "lab", "session_count", "total_hours",
                     "cpu_core_hours", "ram_gb_hours", "gpu_hours",
-                    "avg_cpu", "avg_ram_gb", "avg_gpu"]
+                    "avg_cpu", "avg_ram_gb", "avg_gpu", "pvc_capacity_gb"]
         elif args.by == "lab":
             rows = usage_by_lab(conn, year, month)
             cols = ["lab", "user_count", "session_count", "total_hours",
