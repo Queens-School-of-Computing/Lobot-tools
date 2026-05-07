@@ -259,6 +259,7 @@ def query_storage_by_user(
         """
         SELECT
             username,
+            lab,
             MAX(pvc_capacity_gb) AS pvc_capacity_gb
         FROM sessions
         WHERE start_time >= ? AND start_time < ?

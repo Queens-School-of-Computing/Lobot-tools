@@ -164,7 +164,7 @@ def storage_by_group(
     rows = storage_by_user(conn, year, month)
     groups: dict[str, dict] = {}
     for row in rows:
-        key = billing.resolve_group(row["username"], "") or "unassigned"
+        key = billing.resolve_group(row["username"], row.get("lab", "")) or "unassigned"
         if key not in groups:
             groups[key] = {
                 "group": key,

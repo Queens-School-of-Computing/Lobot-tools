@@ -25,7 +25,7 @@ billing_groups:
 
   smith_business:
     display_name: "Smith School of Business"
-    contact: "finance@smith.queensu.ca"
+#    contact: "finance@smith.queensu.ca"
     users: []        # add JupyterHub usernames here, e.g. [jsmith, bwilson]
 
   # ── Research labs ─────────────────────────────────────────────────────────────
@@ -33,13 +33,13 @@ billing_groups:
 
   bamlab:
     display_name: "BAM Lab"
-    contact: "bamlab-pi@queensu.ca"
+#   contact: "bamlab-pi@queensu.ca"
     labs:
       - bamlab
 
   gandslab:
     display_name: "GOAL & SWIMS Labs"
-    contact: "pi@queensu.ca"
+#    contact: "pi@queensu.ca"
     labs:
       - gandslab
 
