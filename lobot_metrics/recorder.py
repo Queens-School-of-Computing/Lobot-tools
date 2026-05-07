@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from lobot_tui.data.models import ClusterState, PodInfo
+from lobot_tui.data.parsers import _run_kubectl
 
 from .config import (
     COLLECTOR_SSE_URL,
@@ -185,19 +186,53 @@ class MetricsRecorder:
 
     async def _on_pod_appeared(self, pod: PodInfo) -> None:
         sid = _session_id(pod)
-        logger.info("pod appeared: %s", pod.name)
+        pvc_gb = await self._fetch_pvc_size(pod)
+        logger.info("pod appeared: %s (PVC %.0f GB)", pod.name, pvc_gb or 0)
 
         loop = asyncio.get_event_loop()
 
         def _insert():
             conn = open_db(self._db_path)
             try:
-                upsert_session(conn, sid, pod)
+                upsert_session(conn, sid, pod, pvc_capacity_gb=pvc_gb)
                 conn.commit()
             finally:
                 conn.close()
 
         await loop.run_in_executor(None, _insert)
+
+    async def _fetch_pvc_size(self, pod: PodInfo) -> Optional[float]:
+        """Look up the user's home PVC size from Kubernetes."""
+        raw_name = pod.name.removeprefix("jupyter-")
+        pvc_name = f"claim-{raw_name}"
+        stdout, _stderr, rc = await _run_kubectl(
+            "get", "pvc", pvc_name, "-n", "jhub", "-o", "json"
+        )
+        if rc != 0:
+            return None
+        try:
+            data = json.loads(stdout)
+            storage_str = data["spec"]["resources"]["requests"]["storage"]
+            return _parse_storage(storage_str)
+        except (json.JSONDecodeError, KeyError):
+            return None
+
+
+def _parse_storage(value: str) -> float:
+    """Convert a Kubernetes storage string to GB. e.g. '50Gi' → 50.0"""
+    value = value.strip()
+    units = {"Ti": 1024.0, "Gi": 1.0, "Mi": 1.0 / 1024, "Ki": 1.0 / (1024 ** 2),
+             "T": 1000.0, "G": 1.0, "M": 1.0 / 1000, "K": 1.0 / (1000 ** 2)}
+    for suffix, factor in units.items():
+        if value.endswith(suffix):
+            try:
+                return float(value[: -len(suffix)]) * factor
+            except ValueError:
+                return 0.0
+    try:
+        return float(value) / (1024 ** 3)
+    except ValueError:
+        return 0.0
 
     async def _on_pod_disappeared(self, pod_name: str, pod: PodInfo) -> None:
         sid = _session_id(pod)

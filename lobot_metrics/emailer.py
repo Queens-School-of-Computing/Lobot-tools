@@ -156,7 +156,7 @@ def build_monthly_html(
     )
     storage_user_table = _build_table(
         storage_user,
-        ["username", "pvc_name", "avg_capacity_gb"],
+        ["username", "pvc_name", "pvc_capacity_gb"],
         "Storage Allocation — By User",
     )
 

@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     cpu_requested    REAL    NOT NULL DEFAULT 0,
     ram_requested_gb REAL    NOT NULL DEFAULT 0,
     gpu_requested    INTEGER NOT NULL DEFAULT 0,
+    pvc_capacity_gb  REAL,
     end_reason       TEXT
 );
 
@@ -110,19 +111,30 @@ def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = open_db(db_path)
     conn.executescript(_SCHEMA)
+    # Migrate: add pvc_capacity_gb if this is an existing database
+    try:
+        conn.execute("ALTER TABLE sessions ADD COLUMN pvc_capacity_gb REAL")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.close()
 
 
 # ── Session writes ─────────────────────────────────────────────────────────────
 
-def upsert_session(conn: sqlite3.Connection, session_id: str, pod) -> None:
+def upsert_session(
+    conn: sqlite3.Connection,
+    session_id: str,
+    pod,
+    pvc_capacity_gb: Optional[float] = None,
+) -> None:
     """INSERT OR IGNORE a session row. Safe to call repeatedly (idempotent)."""
     conn.execute(
         """
         INSERT OR IGNORE INTO sessions
             (session_id, username, lab, node, start_time,
-             cpu_requested, ram_requested_gb, gpu_requested)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             cpu_requested, ram_requested_gb, gpu_requested, pvc_capacity_gb)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             session_id,
@@ -133,6 +145,7 @@ def upsert_session(conn: sqlite3.Connection, session_id: str, pod) -> None:
             pod.cpu_requested,
             pod.ram_requested_gb,
             pod.gpu_requested,
+            pvc_capacity_gb,
         ),
     )
 
@@ -236,41 +249,21 @@ def insert_storage_snapshot(
     )
 
 
-def insert_pvc_snapshot(
-    conn: sqlite3.Connection,
-    timestamp: str,
-    username: str,
-    pvc_name: str,
-    namespace: str,
-    capacity_gb: float,
-    storage_class: Optional[str],
-) -> None:
-    conn.execute(
-        """
-        INSERT INTO pvc_snapshots
-            (timestamp, username, pvc_name, namespace, capacity_gb, storage_class)
-        VALUES (?,?,?,?,?,?)
-        """,
-        (timestamp, username, pvc_name, namespace, capacity_gb, storage_class),
-    )
-
-
 def query_storage_by_user(
     conn: sqlite3.Connection,
     start_iso: str,
     end_iso: str,
 ) -> list[dict]:
-    """Average PVC allocation per user over the period (GB)."""
+    """PVC allocation per user, taken from sessions that started in the period."""
     rows = conn.execute(
         """
         SELECT
             username,
-            pvc_name,
-            ROUND(AVG(capacity_gb), 2) AS avg_capacity_gb,
-            COUNT(*) AS snapshot_count
-        FROM pvc_snapshots
-        WHERE timestamp >= ? AND timestamp < ?
-        GROUP BY username, pvc_name
+            MAX(pvc_capacity_gb) AS pvc_capacity_gb
+        FROM sessions
+        WHERE start_time >= ? AND start_time < ?
+          AND pvc_capacity_gb IS NOT NULL
+        GROUP BY username
         ORDER BY username
         """,
         (start_iso, end_iso),

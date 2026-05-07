@@ -83,7 +83,7 @@ def cmd_report(args: argparse.Namespace) -> None:
     if storage_user is not None:
         print("── Storage by User ──\n")
         print(format_table(storage_user,
-            ["username", "pvc_name", "avg_capacity_gb"]))
+            ["username", "pvc_name", "pvc_capacity_gb"]))
 
 
 def cmd_export(args: argparse.Namespace) -> None:

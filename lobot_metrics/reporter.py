@@ -93,7 +93,7 @@ _COLUMN_HEADERS = {
     "avg_cpu": "Avg CPU",
     "avg_ram_gb": "Avg RAM GB",
     "avg_gpu": "Avg GPU",
-    "avg_capacity_gb": "Avg PVC GB",
+    "pvc_capacity_gb": "Avg PVC GB",
     "snapshot_count": "Samples",
     "total_avg_gb": "Total PVC GB",
     "pvc_name": "PVC",
@@ -160,7 +160,7 @@ def storage_by_group(
     month: int,
     billing: BillingConfig,
 ) -> list[dict]:
-    """Per-billing-group total average PVC allocation (GB)."""
+    """Per-billing-group total PVC allocation (GB)."""
     rows = storage_by_user(conn, year, month)
     groups: dict[str, dict] = {}
     for row in rows:
@@ -174,7 +174,7 @@ def storage_by_group(
             }
         g = groups[key]
         g["user_count"] += 1
-        g["total_avg_gb"] = round(g["total_avg_gb"] + (row["avg_capacity_gb"] or 0.0), 2)
+        g["total_avg_gb"] = round(g["total_avg_gb"] + (row["pvc_capacity_gb"] or 0.0), 2)
     return sorted(groups.values(), key=lambda x: x["total_avg_gb"], reverse=True)
 
 
