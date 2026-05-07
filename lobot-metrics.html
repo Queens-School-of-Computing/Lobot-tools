@@ -1,0 +1,252 @@
+<h2>Overview</h2>
+<p>A background service that tracks JupyterHub session history and produces usage reports for capacity planning and departmental billing.</p>
+<p><strong>Capabilities at a glance:</strong></p>
+<ul>
+<li>Records every <code>jupyter-*</code> pod lifecycle as a session (start time, end time, duration)</li>
+<li>Captures requested CPU cores, RAM, GPU, and home directory PVC size per session</li>
+<li>Billing model: <strong>requested resources × session duration</strong> (HPC-style) — CPU-core-hours, RAM-GB-hours, GPU-hours</li>
+<li>Periodic cluster-wide snapshots (resource utilisation, node allocation, Longhorn disk) every 15 minutes</li>
+<li>Reports grouped by user, lab, or configurable billing groups (supports cross-lab groupings)</li>
+<li>CLI for ad-hoc reports, CSV export, and session inspection</li>
+<li>Monthly HTML email digest sent on the 1st of each month</li>
+</ul>
+<p>The service subscribes to the <code>lobot-collector</code> SSE stream (<code>localhost:9095/api/events</code>) — no independent kubectl polling.</p>
+<hr />
+
+<h2>Prerequisites</h2>
+<ul>
+<li><code>lobot-collector</code> service running (<code>sudo systemctl status lobot-collector</code>)</li>
+<li>Python 3.8+ with <code>python3.12-venv</code>:</li>
+</ul>
+<pre><code>sudo apt install python3.12-venv</code></pre>
+<ul>
+<li><code>kubectl</code> configured with cluster access (used only to look up PVC sizes when a pod appears)</li>
+</ul>
+<hr />
+
+<h2>Installation</h2>
+<h3>Create the data directory</h3>
+<pre><code>sudo mkdir -p /opt/Lobot/metrics_data
+sudo chown croot:croot /opt/Lobot/metrics_data</code></pre>
+
+<h3>Set up the venv</h3>
+<pre><code>python3 -m venv /opt/Lobot/tools/lobot_metrics/.venv
+
+/opt/Lobot/tools/lobot_metrics/.venv/bin/pip install \
+    -r /opt/Lobot/tools/lobot_metrics/requirements-metrics.txt
+
+# lobot_tui is imported for ClusterState parsing — install its deps too
+/opt/Lobot/tools/lobot_metrics/.venv/bin/pip install \
+    -r /opt/Lobot/tools/lobot_tui/requirements-tui.txt</code></pre>
+
+<h3>Make the launcher executable</h3>
+<pre><code>chmod +x /opt/Lobot/tools/lobot-metrics.sh</code></pre>
+
+<h3>Configure billing groups</h3>
+<pre><code>cp /opt/Lobot/tools/lobot_metrics/billing_config.yaml.sample \
+   /opt/Lobot/metrics_data/billing_config.yaml
+# Edit to match your labs and external groups — see Configuration below</code></pre>
+
+<h3>Install and start the daemon</h3>
+<pre><code>sudo cp /opt/Lobot/tools/lobot-metrics.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now lobot-metrics
+
+# Verify it is running
+sudo systemctl status lobot-metrics
+
+# Follow logs
+sudo journalctl -u lobot-metrics -f</code></pre>
+
+<h3>Install the monthly digest timer (optional)</h3>
+<pre><code>sudo cp /opt/Lobot/tools/lobot-metrics-digest.service /etc/systemd/system/
+sudo cp /opt/Lobot/tools/lobot-metrics-digest.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now lobot-metrics-digest.timer
+
+# Verify the timer is scheduled
+sudo systemctl list-timers lobot-metrics-digest.timer</code></pre>
+<p>The timer fires on the 1st of each month at 08:00 and sends the previous month's digest. <code>Persistent=true</code> means it will fire on the next boot if the server was down when it was scheduled.</p>
+<hr />
+
+<h2>Configuration</h2>
+<h3>billing_config.yaml</h3>
+<p>Located at <code>/opt/Lobot/metrics_data/billing_config.yaml</code>. Controls how sessions are rolled up into billing groups for reports and the email digest.</p>
+<pre><code>billing_groups:
+
+  # External users billed by username regardless of which lab node they use
+  smith_business:
+    display_name: "Smith School of Business"
+    contact: "finance@smith.queensu.ca"    # optional; for your reference
+    users:
+      - jsmith
+      - bwilson
+
+  # Labs billed by node label (lab=&lt;value&gt;)
+  bamlab:
+    display_name: "BAM Lab"
+    labs:
+      - bamlab
+
+  # Shared compute: sessions not matched by a user-level rule fall through here
+  lobot_shared:
+    display_name: "Lobot Shared Compute"
+    labs:
+      - lobot_a40
+      - lobot_a5000
+      - lobot_a16
+      - lobot_problackwell</code></pre>
+<p><strong>Priority rules:</strong></p>
+<ol>
+<li>User-level assignments are checked first — a user listed under <code>users:</code> is always billed to that group regardless of which lab node they run on.</li>
+<li>Lab-level assignments are checked next — all users on a <code>lab=&lt;value&gt;</code> node roll up to the matching group.</li>
+<li>Groups are checked in definition order; first match wins.</li>
+<li>Unmatched sessions appear as <code>unassigned</code> in reports.</li>
+</ol>
+<p>A sample config pre-filled with all known labs is at <code>lobot_metrics/billing_config.yaml.sample</code>.</p>
+
+<h3>Environment variables</h3>
+<table>
+<thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>LOBOT_CLUSTER_DIR</code></td><td><code>/opt/Lobot</code></td><td>Root of the cluster config repo; data directory is <code>$LOBOT_CLUSTER_DIR/metrics_data</code></td></tr>
+<tr><td><code>LOBOT_TOOLS_DIR</code></td><td><code>$LOBOT_CLUSTER_DIR/tools</code></td><td>Tools directory (overrides the derived default)</td></tr>
+</tbody>
+</table>
+<hr />
+
+<h2>CLI Usage</h2>
+<p>All commands are run via the launcher:</p>
+<pre><code>/opt/Lobot/tools/lobot-metrics.sh &lt;subcommand&gt; [options]</code></pre>
+
+<h3>report — Print a usage report</h3>
+<pre><code># All sections (billing group, lab, and user)
+./lobot-metrics.sh report --month 2026-05
+
+# One section only
+./lobot-metrics.sh report --month 2026-05 --by group
+./lobot-metrics.sh report --month 2026-05 --by lab
+./lobot-metrics.sh report --month 2026-05 --by user</code></pre>
+<p><strong>Report columns:</strong></p>
+<table>
+<thead><tr><th>Column</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>Hours</td><td>Total session wall-clock hours</td></tr>
+<tr><td>CPU-core-hrs</td><td>Requested CPU cores × session hours</td></tr>
+<tr><td>RAM-GB-hrs</td><td>Requested RAM (GB) × session hours</td></tr>
+<tr><td>GPU-hrs</td><td>Requested GPUs × session hours</td></tr>
+<tr><td>Peak CPU</td><td>Sum of each user's largest CPU request in the period</td></tr>
+<tr><td>Peak RAM GB</td><td>Sum of each user's largest RAM request in the period</td></tr>
+<tr><td>Peak GPU</td><td>Sum of each user's largest GPU request in the period</td></tr>
+<tr><td>Avg PVC GB</td><td>Largest home directory PVC seen for the user in the period</td></tr>
+</tbody>
+</table>
+<p>Only sessions that both started <strong>and</strong> ended within the month are counted. Sessions still running at report time are excluded.</p>
+
+<h3>sessions — Inspect recorded sessions</h3>
+<pre><code># Show all sessions
+./lobot-metrics.sh sessions
+
+# Show only active (currently running) sessions
+./lobot-metrics.sh sessions --active
+
+# Filter by user or lab
+./lobot-metrics.sh sessions --user wiegerthefarmer
+./lobot-metrics.sh sessions --lab quarrglab</code></pre>
+
+<h3>export — Export to CSV</h3>
+<pre><code># By user (default)
+./lobot-metrics.sh export --month 2026-05 --out /tmp/usage-2026-05.csv
+
+# By lab or billing group
+./lobot-metrics.sh export --month 2026-05 --by lab   --out /tmp/usage-lab.csv
+./lobot-metrics.sh export --month 2026-05 --by group --out /tmp/usage-group.csv</code></pre>
+<p>CSV columns match the report columns for the chosen grouping, including <code>pvc_capacity_gb</code>.</p>
+
+<h3>send-digest — Send the monthly email digest</h3>
+<pre><code># Previous month (default)
+./lobot-metrics.sh send-digest
+
+# Specific month
+./lobot-metrics.sh send-digest --month 2026-05
+
+# Override recipient
+./lobot-metrics.sh send-digest --month 2026-05 --to billing@example.com</code></pre>
+<p>The digest is an HTML email with compute and storage tables for all three groupings (billing group, lab, user). It is sent from <code>&lt;hostname&gt;@cs.queensu.ca</code> to the address configured in <code>config.py</code> (<code>TO_EMAIL</code>).</p>
+<hr />
+
+<h2>How It Works</h2>
+<h3>Session tracking</h3>
+<p>The daemon subscribes to <code>lobot-collector</code>'s SSE stream. On each cluster state update it diffs the current pod list against its internal state:</p>
+<ul>
+<li><strong>Pod appeared</strong> → opens a session row in SQLite with the pod's Kubernetes <code>startTime</code>, node, lab, and requested resources. Looks up the user's home PVC size (<code>claim-&lt;username&gt;</code> in namespace <code>jhub</code>) via kubectl and stores it on the session row.</li>
+<li><strong>Pod disappeared</strong> → closes the session row with <code>end_time</code>, computed <code>duration_seconds</code>, and <code>end_reason=normal</code>.</li>
+</ul>
+<p>The session ID is <code>{pod_name}::{k8s_start_time}</code> — stable across daemon restarts; <code>INSERT OR IGNORE</code> is idempotent.</p>
+
+<h3>Startup reconciliation</h3>
+<p>On startup, the daemon fetches <code>/api/state</code> from the collector and compares open database sessions against the live pod list:</p>
+<ul>
+<li>Open sessions whose pod is no longer running are closed (<code>end_reason=reconciled_missing</code>; duration estimated from now).</li>
+<li>Live pods with no database row get a new session opened.</li>
+</ul>
+<p>This handles the case where the daemon was down while pods started or stopped.</p>
+
+<h3>SSE reconnection</h3>
+<p>If the collector is unreachable, the daemon retries with exponential backoff from 5 s up to 120 s.</p>
+
+<h3>Periodic snapshots</h3>
+<p>Every 15 minutes the daemon writes one snapshot row per lab (resource utilisation), per node (allocation), and per Longhorn disk. These are used for historical cluster capacity analysis but are not currently surfaced in the CLI reports.</p>
+
+<h3>PVC storage</h3>
+<p>Home directory size is captured once when each pod appears, not polled. The value stored is the <code>spec.resources.requests.storage</code> field from the PVC <code>claim-&lt;username&gt;</code> in the <code>jhub</code> namespace. Reports show the largest PVC seen for each user in the period.</p>
+<hr />
+
+<h2>Deploying Updates</h2>
+<p>Pull the latest code and restart the daemon to pick up changes:</p>
+<pre><code>cd /opt/Lobot/tools &amp;&amp; git pull
+sudo systemctl restart lobot-metrics</code></pre>
+<p>Reporting commands (<code>report</code>, <code>export</code>, <code>sessions</code>, <code>send-digest</code>) do not require a service restart — just pull and run.</p>
+<hr />
+
+<h2>Verification</h2>
+<pre><code># Service is running and connected
+sudo systemctl status lobot-metrics
+sudo journalctl -u lobot-metrics -f
+
+# Active sessions match running pods
+./lobot-metrics.sh sessions --active
+
+# Session count in the database
+sqlite3 /opt/Lobot/metrics_data/lobot_metrics.db "SELECT COUNT(*) FROM sessions"
+
+# Current month report
+./lobot-metrics.sh report --month $(date +%Y-%m)
+
+# Send a test digest to yourself
+./lobot-metrics.sh send-digest --month $(date +%Y-%m) --to your@email.com</code></pre>
+<hr />
+
+<h2>Source Files</h2>
+<pre><code>tools/lobot_metrics/
+  __init__.py                  Package marker
+  __main__.py                  Entry point (python3 -m lobot_metrics)
+  config.py                    Paths, intervals, SSE URL, SMTP constants
+  db.py                        SQLite schema + all query functions
+  recorder.py                  SSE subscriber; session open/close; startup reconcile
+  snapshotter.py               15-min periodic resource/node/storage snapshot loop
+  billing.py                   billing_config.yaml loader + group resolution
+  reporter.py                  Aggregation queries → tables / CSV (no async)
+  emailer.py                   Monthly HTML digest builder + SMTP send
+  cli.py                       argparse entry point (all subcommands)
+  billing_config.yaml.sample   Pre-filled sample config with all known labs
+  requirements-metrics.txt     aiohttp&gt;=3.9, PyYAML&gt;=6.0
+
+tools/lobot-metrics.sh                 Shell launcher
+tools/lobot-metrics.service            systemd unit (recorder daemon)
+tools/lobot-metrics-digest.service     systemd oneshot unit for monthly digest
+tools/lobot-metrics-digest.timer       Fires on *-*-01 08:00:00
+
+/opt/Lobot/metrics_data/               Data directory (created during install)
+  lobot_metrics.db                     SQLite database (WAL mode)
+  billing_config.yaml                  Active billing group configuration</code></pre>

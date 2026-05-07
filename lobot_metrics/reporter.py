@@ -63,6 +63,9 @@ def usage_by_group(
                 "gpu_hours": 0.0,
                 "cpu_core_hours": 0.0,
                 "ram_gb_hours": 0.0,
+                "peak_cpu": 0.0,
+                "peak_ram_gb": 0.0,
+                "peak_gpu": 0,
                 "pvc_capacity_gb": 0.0,
             }
         g = groups[key]
@@ -72,6 +75,9 @@ def usage_by_group(
         g["gpu_hours"] = round(g["gpu_hours"] + (row["gpu_hours"] or 0.0), 2)
         g["cpu_core_hours"] = round(g["cpu_core_hours"] + (row["cpu_core_hours"] or 0.0), 2)
         g["ram_gb_hours"] = round(g["ram_gb_hours"] + (row["ram_gb_hours"] or 0.0), 2)
+        g["peak_cpu"] = round(g["peak_cpu"] + (row["peak_cpu"] or 0.0), 1)
+        g["peak_ram_gb"] = round(g["peak_ram_gb"] + (row["peak_ram_gb"] or 0.0), 1)
+        g["peak_gpu"] += row["peak_gpu"] or 0
         g["pvc_capacity_gb"] = round(g["pvc_capacity_gb"] + (row["pvc_capacity_gb"] or 0.0), 2)
 
     return sorted(groups.values(), key=lambda x: x["total_hours"], reverse=True)
@@ -95,6 +101,9 @@ _COLUMN_HEADERS = {
     "avg_cpu": "Avg CPU",
     "avg_ram_gb": "Avg RAM GB",
     "avg_gpu": "Avg GPU",
+    "peak_cpu": "Peak CPU",
+    "peak_ram_gb": "Peak RAM GB",
+    "peak_gpu": "Peak GPU",
     "pvc_capacity_gb": "Avg PVC GB",
     "snapshot_count": "Samples",
     "total_avg_gb": "Total PVC GB",

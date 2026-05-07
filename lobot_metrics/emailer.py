@@ -134,20 +134,22 @@ def build_monthly_html(
     group_table = _build_table(
         by_group,
         ["display_name", "user_count", "session_count", "total_hours",
-         "cpu_core_hours", "ram_gb_hours", "gpu_hours", "pvc_capacity_gb"],
+         "cpu_core_hours", "ram_gb_hours", "gpu_hours",
+         "peak_cpu", "peak_ram_gb", "peak_gpu", "pvc_capacity_gb"],
         "Compute — By Billing Group",
     )
     lab_table = _build_table(
         by_lab,
         ["lab", "user_count", "session_count", "total_hours",
-         "cpu_core_hours", "ram_gb_hours", "gpu_hours", "pvc_capacity_gb"],
+         "cpu_core_hours", "ram_gb_hours", "gpu_hours",
+         "peak_cpu", "peak_ram_gb", "peak_gpu", "pvc_capacity_gb"],
         "Compute — By Lab",
     )
     user_table = _build_table(
         by_user,
         ["username", "lab", "session_count", "total_hours",
-         "cpu_core_hours", "ram_gb_hours", "gpu_hours", "avg_cpu", "avg_ram_gb", "avg_gpu",
-         "pvc_capacity_gb"],
+         "cpu_core_hours", "ram_gb_hours", "gpu_hours",
+         "peak_cpu", "peak_ram_gb", "peak_gpu", "pvc_capacity_gb"],
         "Compute — By User",
     )
     storage_group_table = _build_table(

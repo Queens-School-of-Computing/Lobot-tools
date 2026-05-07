@@ -337,7 +337,10 @@ def query_usage_by_user(
             ROUND(AVG(cpu_requested), 1) AS avg_cpu,
             ROUND(AVG(ram_requested_gb), 1) AS avg_ram_gb,
             ROUND(AVG(gpu_requested), 2) AS avg_gpu,
-            MAX(pvc_capacity_gb) AS pvc_capacity_gb
+            MAX(pvc_capacity_gb) AS pvc_capacity_gb,
+            MAX(cpu_requested) AS peak_cpu,
+            ROUND(MAX(ram_requested_gb), 1) AS peak_ram_gb,
+            MAX(gpu_requested) AS peak_gpu
         FROM sessions
         WHERE {where}
         GROUP BY username, lab
@@ -355,15 +358,23 @@ def query_usage_by_lab(
 ) -> list[dict]:
     rows = conn.execute(
         """
-        WITH user_max_pvc AS (
-            SELECT username, lab, MAX(pvc_capacity_gb) AS pvc
+        WITH user_peaks AS (
+            SELECT username, lab,
+                MAX(cpu_requested)    AS peak_cpu,
+                MAX(ram_requested_gb) AS peak_ram_gb,
+                MAX(gpu_requested)    AS peak_gpu,
+                MAX(pvc_capacity_gb)  AS pvc_capacity_gb
             FROM sessions
             WHERE start_time >= ? AND start_time < ? AND end_time IS NOT NULL
             GROUP BY username, lab
         ),
-        pvc_by_lab AS (
-            SELECT lab, ROUND(SUM(pvc), 2) AS pvc_capacity_gb
-            FROM user_max_pvc
+        peaks_by_lab AS (
+            SELECT lab,
+                SUM(peak_cpu)                    AS peak_cpu,
+                ROUND(SUM(peak_ram_gb), 1)       AS peak_ram_gb,
+                SUM(peak_gpu)                    AS peak_gpu,
+                ROUND(SUM(pvc_capacity_gb), 2)   AS pvc_capacity_gb
+            FROM user_peaks
             GROUP BY lab
         )
         SELECT
@@ -374,9 +385,12 @@ def query_usage_by_lab(
             ROUND(SUM(s.duration_seconds * s.gpu_requested) / 3600.0, 2) AS gpu_hours,
             ROUND(SUM(s.duration_seconds * s.cpu_requested) / 3600.0, 2) AS cpu_core_hours,
             ROUND(SUM(s.duration_seconds * s.ram_requested_gb) / 3600.0, 2) AS ram_gb_hours,
+            p.peak_cpu,
+            p.peak_ram_gb,
+            p.peak_gpu,
             p.pvc_capacity_gb
         FROM sessions s
-        LEFT JOIN pvc_by_lab p ON s.lab = p.lab
+        LEFT JOIN peaks_by_lab p ON s.lab = p.lab
         WHERE s.start_time >= ? AND s.start_time < ? AND s.end_time IS NOT NULL
         GROUP BY s.lab
         ORDER BY total_hours DESC
