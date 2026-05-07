@@ -60,13 +60,13 @@ def cmd_report(args: argparse.Namespace) -> None:
         print("── By Billing Group ──\n")
         print(format_table(rows_group,
             ["display_name", "user_count", "session_count", "total_hours",
-             "cpu_core_hours", "ram_gb_hours", "gpu_hours"]))
+             "cpu_core_hours", "ram_gb_hours", "gpu_hours", "pvc_capacity_gb"]))
 
     if rows_lab is not None:
         print("── By Lab ──\n")
         print(format_table(rows_lab,
             ["lab", "user_count", "session_count", "total_hours",
-             "cpu_core_hours", "ram_gb_hours", "gpu_hours"]))
+             "cpu_core_hours", "ram_gb_hours", "gpu_hours", "pvc_capacity_gb"]))
 
     if rows_user is not None:
         print("── By User ──\n")
@@ -109,12 +109,12 @@ def cmd_export(args: argparse.Namespace) -> None:
         elif args.by == "lab":
             rows = usage_by_lab(conn, year, month)
             cols = ["lab", "user_count", "session_count", "total_hours",
-                    "cpu_core_hours", "ram_gb_hours", "gpu_hours"]
+                    "cpu_core_hours", "ram_gb_hours", "gpu_hours", "pvc_capacity_gb"]
         else:  # group
             billing = load_billing_config(BILLING_CONFIG_PATH)
             rows = usage_by_group(conn, year, month, billing)
             cols = ["group", "display_name", "user_count", "session_count",
-                    "total_hours", "cpu_core_hours", "ram_gb_hours", "gpu_hours"]
+                    "total_hours", "cpu_core_hours", "ram_gb_hours", "gpu_hours", "pvc_capacity_gb"]
     finally:
         conn.close()
 

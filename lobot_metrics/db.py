@@ -355,20 +355,33 @@ def query_usage_by_lab(
 ) -> list[dict]:
     rows = conn.execute(
         """
+        WITH user_max_pvc AS (
+            SELECT username, lab, MAX(pvc_capacity_gb) AS pvc
+            FROM sessions
+            WHERE start_time >= ? AND start_time < ? AND end_time IS NOT NULL
+            GROUP BY username, lab
+        ),
+        pvc_by_lab AS (
+            SELECT lab, ROUND(SUM(pvc), 2) AS pvc_capacity_gb
+            FROM user_max_pvc
+            GROUP BY lab
+        )
         SELECT
-            lab,
-            COUNT(DISTINCT username) AS user_count,
+            s.lab,
+            COUNT(DISTINCT s.username) AS user_count,
             COUNT(*) AS session_count,
-            ROUND(SUM(duration_seconds) / 3600.0, 2) AS total_hours,
-            ROUND(SUM(duration_seconds * gpu_requested) / 3600.0, 2) AS gpu_hours,
-            ROUND(SUM(duration_seconds * cpu_requested) / 3600.0, 2) AS cpu_core_hours,
-            ROUND(SUM(duration_seconds * ram_requested_gb) / 3600.0, 2) AS ram_gb_hours
-        FROM sessions
-        WHERE start_time >= ? AND start_time < ? AND end_time IS NOT NULL
-        GROUP BY lab
+            ROUND(SUM(s.duration_seconds) / 3600.0, 2) AS total_hours,
+            ROUND(SUM(s.duration_seconds * s.gpu_requested) / 3600.0, 2) AS gpu_hours,
+            ROUND(SUM(s.duration_seconds * s.cpu_requested) / 3600.0, 2) AS cpu_core_hours,
+            ROUND(SUM(s.duration_seconds * s.ram_requested_gb) / 3600.0, 2) AS ram_gb_hours,
+            p.pvc_capacity_gb
+        FROM sessions s
+        LEFT JOIN pvc_by_lab p ON s.lab = p.lab
+        WHERE s.start_time >= ? AND s.start_time < ? AND s.end_time IS NOT NULL
+        GROUP BY s.lab
         ORDER BY total_hours DESC
         """,
-        (start_iso, end_iso),
+        (start_iso, end_iso, start_iso, end_iso),
     ).fetchall()
     return [dict(row) for row in rows]
 

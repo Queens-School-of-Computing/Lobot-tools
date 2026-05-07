@@ -63,6 +63,7 @@ def usage_by_group(
                 "gpu_hours": 0.0,
                 "cpu_core_hours": 0.0,
                 "ram_gb_hours": 0.0,
+                "pvc_capacity_gb": 0.0,
             }
         g = groups[key]
         g["user_count"] += 1
@@ -71,6 +72,7 @@ def usage_by_group(
         g["gpu_hours"] = round(g["gpu_hours"] + (row["gpu_hours"] or 0.0), 2)
         g["cpu_core_hours"] = round(g["cpu_core_hours"] + (row["cpu_core_hours"] or 0.0), 2)
         g["ram_gb_hours"] = round(g["ram_gb_hours"] + (row["ram_gb_hours"] or 0.0), 2)
+        g["pvc_capacity_gb"] = round(g["pvc_capacity_gb"] + (row["pvc_capacity_gb"] or 0.0), 2)
 
     return sorted(groups.values(), key=lambda x: x["total_hours"], reverse=True)
 

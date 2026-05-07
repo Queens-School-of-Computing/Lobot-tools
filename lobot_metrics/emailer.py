@@ -134,13 +134,13 @@ def build_monthly_html(
     group_table = _build_table(
         by_group,
         ["display_name", "user_count", "session_count", "total_hours",
-         "cpu_core_hours", "ram_gb_hours", "gpu_hours"],
+         "cpu_core_hours", "ram_gb_hours", "gpu_hours", "pvc_capacity_gb"],
         "Compute — By Billing Group",
     )
     lab_table = _build_table(
         by_lab,
         ["lab", "user_count", "session_count", "total_hours",
-         "cpu_core_hours", "ram_gb_hours", "gpu_hours"],
+         "cpu_core_hours", "ram_gb_hours", "gpu_hours", "pvc_capacity_gb"],
         "Compute — By Lab",
     )
     user_table = _build_table(
