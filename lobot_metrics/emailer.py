@@ -125,17 +125,34 @@ def _build_table(rows: list[dict], columns: list[str], title: str) -> str:
 
 # ── Heatmap ────────────────────────────────────────────────────────────────────
 
-_HM_COLORS = ["#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"]
 _HM_DOW_ORDER = [1, 2, 3, 4, 5, 6, 0]
 _HM_DOW_NAMES = {0: "Sun", 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat"}
 
+# GitHub light-mode contribution graph: empty=light gray, heavy=dark green
+_HM_ANCHORS = [
+    (0.00, (235, 237, 240)),  # #ebedf0  empty
+    (0.25, (155, 233, 168)),  # #9be9a8  light green
+    (0.50, ( 64, 196,  99)),  # #40c463  medium
+    (0.75, ( 48, 161,  78)),  # #30a14e  dark
+    (1.00, ( 33, 110,  57)),  # #216e39  darkest
+]
+_HM_BG = "#ffffff"
+
 
 def _hm_color(util: float) -> str:
-    if util <= 0:   return _HM_COLORS[0]
-    if util <= 0.25: return _HM_COLORS[1]
-    if util <= 0.50: return _HM_COLORS[2]
-    if util <= 0.75: return _HM_COLORS[3]
-    return _HM_COLORS[4]
+    """Continuous RGB interpolation through GitHub's dark-mode green scale."""
+    util = max(0.0, min(1.0, util))
+    for i in range(len(_HM_ANCHORS) - 1):
+        t0, c0 = _HM_ANCHORS[i]
+        t1, c1 = _HM_ANCHORS[i + 1]
+        if util <= t1:
+            t = (util - t0) / (t1 - t0)
+            r = round(c0[0] + t * (c1[0] - c0[0]))
+            g = round(c0[1] + t * (c1[1] - c0[1]))
+            b = round(c0[2] + t * (c1[2] - c0[2]))
+            return f"#{r:02x}{g:02x}{b:02x}"
+    r, g, b = _HM_ANCHORS[-1][1]
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def _build_heatmap_html(rows: list[dict], metric: str, title: str) -> str:
@@ -169,9 +186,9 @@ def _build_heatmap_html(rows: list[dict], metric: str, title: str) -> str:
             peak_note = f"Peak: {peak_pct:.0f}% — {dow_name} {peak_row['hour']:02d}:00 {HEATMAP_TIMEZONE_NAME}"
 
     cell = "width:16px;height:16px;border-radius:2px"
-    lbl  = "font-size:10px;color:#666;padding-right:5px;text-align:right;white-space:nowrap;vertical-align:middle"
+    lbl  = "font-size:10px;color:#666;padding-right:6px;text-align:right;white-space:nowrap;vertical-align:middle"
 
-    header = '<td style="width:36px"></td>' + "".join(
+    header = '<td style="width:38px"></td>' + "".join(
         f'<td style="font-size:10px;color:#666;text-align:center;padding-bottom:3px">{_HM_DOW_NAMES[d]}</td>'
         for d in _HM_DOW_ORDER
     )
@@ -183,8 +200,8 @@ def _build_heatmap_html(rows: list[dict], metric: str, title: str) -> str:
         data_rows += f"<tr>{cells}</tr>"
 
     legend = "".join(
-        f'<span style="display:inline-block;width:12px;height:12px;background:{c};border-radius:2px;margin:0 1px;vertical-align:middle"></span>'
-        for c in _HM_COLORS
+        f'<span style="display:inline-block;width:12px;height:12px;background:{_hm_color(i / 9)};border-radius:2px;margin:0 1px;vertical-align:middle"></span>'
+        for i in range(10)
     )
 
     return (
