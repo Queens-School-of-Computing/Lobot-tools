@@ -158,8 +158,50 @@ def cmd_send_digest(args: argparse.Namespace) -> None:
 
 def cmd_daemon(_args: argparse.Namespace) -> None:
     import asyncio
-    from . import __main__
-    asyncio.run(__main__.main())
+    import logging
+    import signal
+    import sys
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        stream=sys.stdout,
+    )
+    logger = logging.getLogger("lobot_metrics")
+
+    from .config import DB_PATH
+    from .db import init_db
+    from .recorder import MetricsRecorder
+    from .snapshotter import PeriodicSnapshotter
+
+    async def _run() -> None:
+        init_db(DB_PATH)
+        logger.info("Database ready at %s", DB_PATH)
+
+        recorder = MetricsRecorder(DB_PATH)
+        snapshotter = PeriodicSnapshotter(recorder, DB_PATH)
+        shutdown_event = asyncio.Event()
+
+        def _handle_signal(signum, frame):
+            sig_name = signal.Signals(signum).name
+            logger.info("Received %s, shutting down…", sig_name)
+            asyncio.get_event_loop().call_soon_threadsafe(shutdown_event.set)
+
+        signal.signal(signal.SIGTERM, _handle_signal)
+        signal.signal(signal.SIGINT, _handle_signal)
+
+        logger.info("Reconciling open sessions with live cluster state…")
+        await recorder.reconcile_on_startup()
+
+        logger.info("Starting SSE recorder and periodic snapshotter")
+        await recorder.start()
+        await snapshotter.start()
+
+        logger.info("lobot-metrics running — Ctrl-C or SIGTERM to stop")
+        await shutdown_event.wait()
+        logger.info("Shutting down")
+
+    asyncio.run(_run())
 
 
 # ── Parser ─────────────────────────────────────────────────────────────────────
