@@ -181,7 +181,13 @@ def cmd_send_digest(args: argparse.Namespace) -> None:
         else:
             year, month = today.year, today.month - 1
 
-    send_monthly_digest(year, month, to=args.to or None)
+    send_monthly_digest(
+        year, month,
+        to=args.to or None,
+        lab=args.lab or None,
+        group=args.group or None,
+        all_heatmap=args.all_heatmap,
+    )
 
 
 def cmd_daemon(_args: argparse.Namespace) -> None:
@@ -262,7 +268,8 @@ def cmd_heatmap(args: argparse.Namespace) -> None:
     start, end = _month_bounds(year, month)
     conn = open_db(DB_PATH)
     try:
-        rows = query_heatmap(conn, start, end, metric=metric, lab=lab,
+        rows = query_heatmap(conn, start, end, metric=metric,
+                             labs=[lab] if lab else None,
                              tz_offset_minutes=tz_offset)
     finally:
         conn.close()
@@ -358,6 +365,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Month to report (default: previous calendar month)",
     )
     p_digest.add_argument("--to", metavar="EMAIL", help="Override recipient address")
+    p_digest.add_argument(
+        "--lab", metavar="LAB",
+        help="Show heatmap only for this lab (omits all-labs aggregate)",
+    )
+    p_digest.add_argument(
+        "--group", metavar="GROUP",
+        help="Show heatmap only for this billing group key (omits all-labs aggregate)",
+    )
+    p_digest.add_argument(
+        "--all-heatmap", action="store_true",
+        help="Include the all-labs aggregate heatmap alongside --lab or --group",
+    )
 
     # heatmap
     p_heatmap = sub.add_parser("heatmap", help="Show resource utilization heatmap (hour × day-of-week)")

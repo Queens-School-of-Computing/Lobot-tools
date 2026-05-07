@@ -415,7 +415,7 @@ def query_heatmap(
     start_iso: str,
     end_iso: str,
     metric: str = "gpu",
-    lab: Optional[str] = None,
+    labs: Optional[list] = None,
     tz_offset_minutes: int = 0,
 ) -> list[dict]:
     """
@@ -423,76 +423,55 @@ def query_heatmap(
     dow follows strftime %w: 0=Sun, 1=Mon, ..., 6=Sat.
     For gpu/cpu/ram: avg_util and peak_util are fractions (0.0–1.0) of capacity.
     For pods: avg_util and peak_util are raw counts; capacity is None.
+    labs: list of lab names to include (None = all labs).
     tz_offset_minutes shifts UTC timestamps before dow/hour extraction.
     """
     col_req, col_total = _HEATMAP_METRICS[metric]
     tz_mod = f"{tz_offset_minutes:+d} minutes"
 
-    if col_total is not None:
-        if lab:
-            sql = f"""
-                SELECT
-                    CAST(strftime('%w', datetime(timestamp, '{tz_mod}')) AS INTEGER) AS dow,
-                    CAST(strftime('%H', datetime(timestamp, '{tz_mod}')) AS INTEGER) AS hour,
-                    AVG(CAST({col_req} AS REAL) / NULLIF({col_total}, 0)) AS avg_util,
-                    MAX(CAST({col_req} AS REAL) / NULLIF({col_total}, 0)) AS peak_util,
-                    MAX({col_total}) AS capacity
-                FROM resource_snapshots
-                WHERE timestamp >= ? AND timestamp < ? AND lab = ?
-                GROUP BY dow, hour
-            """
-            params: tuple = (start_iso, end_iso, lab)
-        else:
-            sql = f"""
-                SELECT
-                    CAST(strftime('%w', datetime(t, '{tz_mod}')) AS INTEGER) AS dow,
-                    CAST(strftime('%H', datetime(t, '{tz_mod}')) AS INTEGER) AS hour,
-                    AVG(CAST(agg_req AS REAL) / NULLIF(agg_total, 0)) AS avg_util,
-                    MAX(CAST(agg_req AS REAL) / NULLIF(agg_total, 0)) AS peak_util,
-                    MAX(agg_total) AS capacity
-                FROM (
-                    SELECT timestamp AS t,
-                        SUM({col_req}) AS agg_req,
-                        SUM({col_total}) AS agg_total
-                    FROM resource_snapshots
-                    WHERE timestamp >= ? AND timestamp < ?
-                    GROUP BY timestamp
-                )
-                GROUP BY dow, hour
-            """
-            params = (start_iso, end_iso)
-    else:
-        if lab:
-            sql = f"""
-                SELECT
-                    CAST(strftime('%w', datetime(timestamp, '{tz_mod}')) AS INTEGER) AS dow,
-                    CAST(strftime('%H', datetime(timestamp, '{tz_mod}')) AS INTEGER) AS hour,
-                    AVG(CAST({col_req} AS REAL)) AS avg_util,
-                    MAX({col_req}) AS peak_util,
-                    NULL AS capacity
-                FROM resource_snapshots
-                WHERE timestamp >= ? AND timestamp < ? AND lab = ?
-                GROUP BY dow, hour
-            """
-            params = (start_iso, end_iso, lab)
-        else:
-            sql = f"""
-                SELECT
-                    CAST(strftime('%w', datetime(t, '{tz_mod}')) AS INTEGER) AS dow,
-                    CAST(strftime('%H', datetime(t, '{tz_mod}')) AS INTEGER) AS hour,
-                    AVG(CAST(agg_req AS REAL)) AS avg_util,
-                    MAX(agg_req) AS peak_util,
-                    NULL AS capacity
-                FROM (
-                    SELECT timestamp AS t, SUM({col_req}) AS agg_req
-                    FROM resource_snapshots
-                    WHERE timestamp >= ? AND timestamp < ?
-                    GROUP BY timestamp
-                )
-                GROUP BY dow, hour
-            """
-            params = (start_iso, end_iso)
+    lab_filter = ""
+    lab_params: tuple = ()
+    if labs:
+        placeholders = ",".join("?" * len(labs))
+        lab_filter = f"AND lab IN ({placeholders})"
+        lab_params = tuple(labs)
 
+    if col_total is not None:
+        sql = f"""
+            SELECT
+                CAST(strftime('%w', datetime(t, '{tz_mod}')) AS INTEGER) AS dow,
+                CAST(strftime('%H', datetime(t, '{tz_mod}')) AS INTEGER) AS hour,
+                AVG(CAST(agg_req AS REAL) / NULLIF(agg_total, 0)) AS avg_util,
+                MAX(CAST(agg_req AS REAL) / NULLIF(agg_total, 0)) AS peak_util,
+                MAX(agg_total) AS capacity
+            FROM (
+                SELECT timestamp AS t,
+                    SUM({col_req}) AS agg_req,
+                    SUM({col_total}) AS agg_total
+                FROM resource_snapshots
+                WHERE timestamp >= ? AND timestamp < ? {lab_filter}
+                GROUP BY timestamp
+            )
+            GROUP BY dow, hour
+        """
+    else:
+        sql = f"""
+            SELECT
+                CAST(strftime('%w', datetime(t, '{tz_mod}')) AS INTEGER) AS dow,
+                CAST(strftime('%H', datetime(t, '{tz_mod}')) AS INTEGER) AS hour,
+                AVG(CAST(agg_req AS REAL)) AS avg_util,
+                MAX(agg_req) AS peak_util,
+                NULL AS capacity
+            FROM (
+                SELECT timestamp AS t, SUM({col_req}) AS agg_req
+                FROM resource_snapshots
+                WHERE timestamp >= ? AND timestamp < ? {lab_filter}
+                GROUP BY timestamp
+            )
+            GROUP BY dow, hour
+        """
+
+    params = (start_iso, end_iso) + lab_params
     return [dict(row) for row in conn.execute(sql, params).fetchall()]
 
 

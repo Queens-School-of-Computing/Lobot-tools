@@ -179,15 +179,24 @@ sudo systemctl list-timers lobot-metrics-digest.timer</code></pre>
 <p>Requires at least one 15-minute snapshot cycle in the period.</p>
 
 <h3>send-digest — Send the monthly email digest</h3>
-<pre><code># Previous month (default)
+<pre><code># Previous month (default) — heatmaps show all labs combined
 ./lobot-metrics.sh send-digest
 
 # Specific month
 ./lobot-metrics.sh send-digest --month 2026-05
 
 # Override recipient
-./lobot-metrics.sh send-digest --month 2026-05 --to billing@example.com</code></pre>
-<p>The digest is an HTML email with compute and storage tables for all three groupings (billing group, lab, user). It is sent from <code>&lt;hostname&gt;@cs.queensu.ca</code> to the address configured in <code>config.py</code> (<code>TO_EMAIL</code>).</p>
+./lobot-metrics.sh send-digest --month 2026-05 --to billing@example.com
+
+# Heatmap for a specific lab only (all-labs aggregate excluded)
+./lobot-metrics.sh send-digest --month 2026-05 --lab quarrglab --to prof@example.com
+
+# Heatmap for a billing group only
+./lobot-metrics.sh send-digest --month 2026-05 --group bamlab --to pi@example.com
+
+# Billing group heatmap AND the all-labs aggregate
+./lobot-metrics.sh send-digest --month 2026-05 --group bamlab --all-heatmap</code></pre>
+<p>The digest is an HTML email with compute and storage tables for all three groupings (billing group, lab, user) and GitHub-style utilization heatmaps. By default the heatmaps cover all labs combined. Use <code>--lab</code> or <code>--group</code> to scope the heatmap to a specific lab or billing group — useful when sending targeted digests to a professor or department. Add <code>--all-heatmap</code> to include the all-labs section alongside the filtered one. The email is sent from <code>&lt;hostname&gt;@cs.queensu.ca</code> to the address configured in <code>config.py</code> (<code>TO_EMAIL</code>). The heatmaps auto-switch between light and dark colour schemes based on the recipient's mail client preference.</p>
 <hr />
 
 <h2>How It Works</h2>

@@ -258,7 +258,7 @@ Requires at least one 15-minute snapshot cycle in the period. If the daemon was 
 ### `send-digest` — Send the monthly email digest
 
 ```bash
-# Previous month (default)
+# Previous month (default) — heatmaps show all labs combined
 ./lobot-metrics.sh send-digest
 
 # Specific month
@@ -266,9 +266,18 @@ Requires at least one 15-minute snapshot cycle in the period. If the daemon was 
 
 # Override recipient
 ./lobot-metrics.sh send-digest --month 2026-05 --to billing@example.com
+
+# Heatmap for a specific lab only (all-labs aggregate excluded)
+./lobot-metrics.sh send-digest --month 2026-05 --lab quarrglab --to prof@example.com
+
+# Heatmap for a billing group only
+./lobot-metrics.sh send-digest --month 2026-05 --group bamlab --to pi@example.com
+
+# Billing group heatmap AND the all-labs aggregate
+./lobot-metrics.sh send-digest --month 2026-05 --group bamlab --all-heatmap
 ```
 
-The digest is an HTML email with compute and storage tables for all three groupings (billing group, lab, user). It is sent from `<hostname>@cs.queensu.ca` to the address configured in `config.py` (`TO_EMAIL`).
+The digest is an HTML email with compute and storage tables for all three groupings (billing group, lab, user) and GitHub-style utilization heatmaps. By default the heatmaps cover all labs combined. Use `--lab` or `--group` to scope the heatmap to a specific lab or billing group — useful when sending targeted digests to a professor or department. Add `--all-heatmap` to include the all-labs section alongside the filtered one. The email auto-switches between light and dark colour schemes based on the recipient's mail client preference.
 
 ### `daemon` — Start the recorder (called by systemd)
 
