@@ -16,8 +16,17 @@ from .models import DiskInfo, NodeInfo, PodInfo, ResourceSummary
 # ---------------------------------------------------------------------------
 
 
-def _pod_username(pod_name: str) -> str:
-    """Strip jupyter- prefix and unescape -2d→- (mirrors resource_collector.py:116-117)."""
+def _pod_username(pod_name: str, labels: dict | None = None) -> str:
+    """Return the real JupyterHub username for a pod.
+
+    Prefers the hub.jupyter.org/username label (always set by KubeSpawner to
+    the real username) over deriving it from the pod name, which fails for
+    non-standard names created during data recovery.
+    """
+    if labels:
+        label_user = labels.get("hub.jupyter.org/username", "")
+        if label_user:
+            return label_user
     name = pod_name.removeprefix("jupyter-")
     return name.replace("-2d", "-")
 
@@ -174,7 +183,8 @@ def _parse_pods(json_str: str, namespace: str, node_resource_map: dict) -> list:
             ram_gb = _parse_memory_request_gb(mem_raw)
             gpu = _parse_gpu_request(gpu_raw)
 
-            username = _pod_username(name)
+            labels = meta.get("labels", {})
+            username = _pod_username(name, labels)
             resource = node_resource_map.get(node, "")
             age = _age_string(start_time)
 
