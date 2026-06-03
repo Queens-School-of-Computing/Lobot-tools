@@ -576,6 +576,31 @@ Copy the output to `assets/html/<labname>.html` in the repo, commit, and push. T
 > **SSH key auth required:** Ensure the control plane's SSH public key is authorised on the
 > target node (`ssh-copy-id <node>`) before using `--host`.
 
+### Grant user access to the new lab
+
+There are two ways to give users access to a lab. Use whichever fits the situation.
+
+**Direct access — individual users assigned to the lab**
+
+Add each user to the lab in the SharePoint membership list. The `gpu-cluster-users-changed` repository dispatch event triggers the `update-runtime_setting` workflow, which regenerates `runtime_setting.yaml` and opens a PR. Once merged, users see the lab's spawn form the next time they log in. No config change or helm upgrade is needed — the hub fetches `runtime_setting.yaml` from GitHub at spawn time.
+
+**Group access — existing lab members gain access to a shared/department resource**
+
+Use `LAB_GROUPS` in `.github/scripts/generate-runtime-config.py` to grant all members of one lab access to another lab without touching SharePoint:
+
+```python
+LAB_GROUPS = {
+    'bamlab': ['bamlab', 'lobot_blackwell'],   # bamlab members can also spawn on lobot_blackwell
+    'riselab': ['riselab', 'lobot_blackwell'], # riselab members too
+}
+```
+
+The key is the primary lab (source of membership truth). The value is the full list of labs those users may spawn on, including their own. When a user in a grouped primary lab logs in, the spawn form shows a **Resource Pool** dropdown listing all their accessible labs. Switching pools shows the correct hardware options for that node and submits the right storage class.
+
+`LAB_GROUPS` is a code change only — commit and push. The hub reads `lab_groups` from `runtime_setting.yaml` (fetched at spawn time), so a helm upgrade is needed to deploy the updated `config.yaml.bk` logic, but no SharePoint entry is required for the shared lab.
+
+> **Note:** A `GLOBAL_LABS` list (not yet implemented) would be the right addition if a resource should be accessible to every user on the cluster with no per-lab restriction.
+
 ### lobot-collector (cluster status service)
 
 The lobot-collector service polls kubectl once on behalf of all consumers:

@@ -381,6 +381,19 @@ cd /opt/Lobot/tools
 <p>Copy the output to <code>assets/html/&lt;labname&gt;.html</code> in the repo, commit, and push. The <code>generate-runtime-config</code> workflow will pick up the new limits automatically on the next run.</p>
 <blockquote><p><strong>Note:</strong> The image tag is read from <code>/opt/Lobot/config-env.yaml</code> if present, falling back to <code>config.yaml.bk</code> fetched directly from GitHub. No manual update should be needed.</p>
 <p><strong>SSH key auth required:</strong> Ensure the control plane's SSH public key is authorised on the target node (<code>ssh-copy-id &lt;node&gt;</code>) before using <code>--host</code>.</p></blockquote>
+<h3>Grant user access to the new lab</h3>
+<p>There are two ways to give users access to a lab. Use whichever fits the situation.</p>
+<p><strong>Direct access — individual users assigned to the lab</strong></p>
+<p>Add each user to the lab in the SharePoint membership list. The <code>gpu-cluster-users-changed</code> repository dispatch event triggers the <code>update-runtime_setting</code> workflow, which regenerates <code>runtime_setting.yaml</code> and opens a PR. Once merged, users see the lab's spawn form the next time they log in. No config change or helm upgrade is needed — the hub fetches <code>runtime_setting.yaml</code> from GitHub at spawn time.</p>
+<p><strong>Group access — existing lab members gain access to a shared/department resource</strong></p>
+<p>Use <code>LAB_GROUPS</code> in <code>.github/scripts/generate-runtime-config.py</code> to grant all members of one lab access to another lab without touching SharePoint:</p>
+<pre><code>LAB_GROUPS = {
+    'bamlab': ['bamlab', 'lobot_blackwell'],   # bamlab members can also spawn on lobot_blackwell
+    'riselab': ['riselab', 'lobot_blackwell'], # riselab members too
+}</code></pre>
+<p>The key is the primary lab (source of membership truth). The value is the full list of labs those users may spawn on, including their own. When a user in a grouped primary lab logs in, the spawn form shows a <strong>Resource Pool</strong> dropdown listing all their accessible labs. Switching pools shows the correct hardware options for that node and submits the right storage class.</p>
+<p><code>LAB_GROUPS</code> is a code change only — commit and push. The hub reads <code>lab_groups</code> from <code>runtime_setting.yaml</code> (fetched at spawn time), so a helm upgrade is needed to deploy the updated <code>config.yaml.bk</code> logic, but no SharePoint entry is required for the shared lab.</p>
+<blockquote><p><strong>Note:</strong> A <code>GLOBAL_LABS</code> list (not yet implemented) would be the right addition if a resource should be accessible to every user on the cluster with no per-lab restriction.</p></blockquote>
 <h3>lobot-collector (cluster status service)</h3>
 <p>The lobot-collector service polls kubectl once on behalf of all consumers:</p>
 <ul>
