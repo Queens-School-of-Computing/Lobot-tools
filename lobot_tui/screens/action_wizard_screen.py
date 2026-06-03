@@ -319,6 +319,18 @@ class ActionWizardScreen(ModalScreen):
         except Exception:
             pass
 
+    def on_selection_list_selected_changed(self, event: SelectionList.SelectedChanged) -> None:
+        """When tags are selected in a multi_tag_select list, uncheck use_latest."""
+        if not (event.selection_list.id and event.selection_list.id.endswith("-tags")):
+            return
+        if not event.selection_list.selected:
+            return
+        try:
+            cb = self.query_one("#field-use_latest", Checkbox)
+            cb.value = False
+        except Exception:
+            pass
+
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
         """Enable/disable tag widgets based on use_latest state.
         Checked → widget disabled (grayed out, value ignored).
