@@ -6,6 +6,11 @@ CACHE_DIR="/opt/Lobot/tools/pull-digests"
 TOOLS_DIR="${LOBOT_CLUSTER_DIR:-/opt/Lobot}/tools"
 LOG_DIR="${LOBOT_CLUSTER_DIR:-/opt/Lobot}/logs"
 
+# Image changelog deploy stats (optional). Point at a gpu-jupyter-latest clone
+# (with git push credentials) to attach each run's node-pull stats to that
+# build's IMAGE-CHANGELOG entry. Leave empty to disable.
+CHANGELOG_REPO_DIR="${LOBOT_CHANGELOG_REPO_DIR:-}"
+
 EMAIL_ENABLED=true
 SMTP_SERVER="innovate.cs.queensu.ca"
 SMTP_PORT=25
@@ -500,6 +505,41 @@ log "=========================================="
 if [ "$DRY_RUN" = "true" ]; then
     log " [dry-run] No email sent."
     exit 0
+fi
+
+# ── Deploy stats → image changelog (optional) ──────────────────────────────────
+# Attaches this run's node-pull stats to the matching build entry in the
+# gpu-jupyter-latest image changelog (see BUILD-PUSH-QSCIMAGES.md, "Build
+# changelog"). Targets the build_date from the clone's component-versions.json
+# so the stats land on the nightly that produced the new digests.
+if [ -n "$CHANGELOG_REPO_DIR" ] && [ $PULLED_COUNT -gt 0 ]; then
+    log ""
+    if [ ! -f "$CHANGELOG_REPO_DIR/update_image_metadata.py" ]; then
+        log "⚠️  CHANGELOG_REPO_DIR set but update_image_metadata.py not found in it — skipping deploy stats"
+    else
+        log " 📝 Recording deploy stats in the image changelog..."
+        DEPLOY_OUT=$(
+            cd "$CHANGELOG_REPO_DIR" && \
+            { git pull --rebase >/dev/null 2>&1 || echo "(git pull failed — using local clone)"; } && \
+            MANIFEST_DATE=$(python3 -c "import json; print(json.load(open('component-versions.json'))['build_date'])" 2>/dev/null); \
+            python3 update_image_metadata.py deploy \
+                ${MANIFEST_DATE:+--build-date "$MANIFEST_DATE"} \
+                --date "$(date '+%Y-%m-%d')" \
+                --nodes-ok "$PULLED_COUNT" \
+                --nodes-total $((PULLED_COUNT + FAILED_COUNT)) \
+                --duration "$TOTAL_ELAPSED" 2>&1 && \
+            git add changelog-data.json IMAGE-CHANGELOG.md && \
+            git -c user.name="Lobot Auto-Pull" -c user.email="${FROM_EMAIL}" \
+                commit -q -m "chore: deploy stats $(date '+%Y-%m-%d')" 2>&1 && \
+            git push -q 2>&1
+        )
+        if [ $? -eq 0 ]; then
+            while IFS= read -r dline; do [ -n "$dline" ] && log "   $dline"; done <<< "$DEPLOY_OUT"
+            log " 📤 Deploy stats committed and pushed"
+        else
+            log " ⚠️  Could not record deploy stats (non-fatal): ${DEPLOY_OUT}"
+        fi
+    fi
 fi
 
 # ── Faculty notifications (one email per unique address) ───────────────────────

@@ -586,7 +586,9 @@ A sample config with real tag names and exclude lists is at
    e. On success: write the new digest to that node's cache file
    f. On failure: leave cache unchanged so the next poll retries that node
 3. Prune untagged images from every target node via SSH (see [Automatic Pruning](#automatic-pruning) below)
-4. After processing all tags, send faculty notifications (deduplicated) and
+4. Record this run's pull stats in the image changelog, if configured (see
+   [Deploy Stats](#deploy-stats) below)
+5. After processing all tags, send faculty notifications (deduplicated) and
    the admin summary email if anything was pulled or failed
 
 ### Automatic Pruning {#automatic-pruning}
@@ -635,6 +637,37 @@ To force a re-pull for a single node only:
 ```bash
 rm /opt/Lobot/tools/pull-digests/*20260313-nightly*___duotronic
 ```
+
+### Deploy Stats {#deploy-stats}
+
+When at least one node pulled an image, the script can attach the run's stats
+(nodes ok / nodes attempted / duration) to the matching build entry in the
+gpu-jupyter-latest **image changelog** (`IMAGE-CHANGELOG.md` — see the "Build
+changelog" section of BUILD-PUSH-QSCIMAGES.md in that repo). The changelog
+entry then shows when each nightly actually reached the cluster:
+
+```
+**Deployed:** 2026-06-11 · 2/2 nodes · 22m 0s
+```
+
+Disabled by default. To enable, point `CHANGELOG_REPO_DIR` (or the
+`LOBOT_CHANGELOG_REPO_DIR` environment variable) at a clone of
+gpu-jupyter-latest on the control plane:
+
+```bash
+CHANGELOG_REPO_DIR="/opt/Lobot/gpu-jupyter-latest"
+```
+
+The script then `git pull --rebase`s the clone, reads the target `build_date`
+from `component-versions.json`, runs `update_image_metadata.py deploy`, and
+commits/pushes `changelog-data.json` + `IMAGE-CHANGELOG.md`. The clone needs
+git push credentials (same pattern as the build server's manifest
+auto-commit). Every step is non-fatal — on any failure a warning is logged and
+the run continues.
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOBOT_CHANGELOG_REPO_DIR` | *(empty — disabled)* | Path to a gpu-jupyter-latest clone for deploy-stats recording |
 
 ### Email Notifications
 

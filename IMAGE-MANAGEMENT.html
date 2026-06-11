@@ -552,6 +552,7 @@ tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab
 </ol>
 </li>
 <li>Prune untagged images from every target node via SSH (see <a href="#automatic-pruning">Automatic Pruning</a> below)</li>
+<li>Record this run's pull stats in the image changelog, if configured (see <a href="#deploy-stats">Deploy Stats</a> below)</li>
 <li>After processing all tags, send faculty notifications (deduplicated) and the admin summary email if anything was pulled or failed</li>
 </ol>
 <h3 id="automatic-pruning">Automatic Pruning</h3>
@@ -580,6 +581,18 @@ tag=queensschoolofcomputingdocker/gpu-jupyter-latest:13.2.1cudnn-2.20.0tf-matlab
 <pre><code>rm /opt/Lobot/tools/pull-digests/*20260313-nightly*</code></pre>
 <p>To force a re-pull for a single node only:</p>
 <pre><code>rm /opt/Lobot/tools/pull-digests/*20260313-nightly*___duotronic</code></pre>
+<h3 id="deploy-stats">Deploy Stats</h3>
+<p>When at least one node pulled an image, the script can attach the run's stats (nodes ok / nodes attempted / duration) to the matching build entry in the gpu-jupyter-latest <strong>image changelog</strong> (<code>IMAGE-CHANGELOG.md</code> — see the "Build changelog" section of BUILD-PUSH-QSCIMAGES in that repo). The changelog entry then shows when each nightly actually reached the cluster:</p>
+<pre><code>**Deployed:** 2026-06-11 · 2/2 nodes · 22m 0s</code></pre>
+<p>Disabled by default. To enable, point <code>CHANGELOG_REPO_DIR</code> (or the <code>LOBOT_CHANGELOG_REPO_DIR</code> environment variable) at a clone of gpu-jupyter-latest on the control plane:</p>
+<pre><code>CHANGELOG_REPO_DIR="/opt/Lobot/gpu-jupyter-latest"</code></pre>
+<p>The script then <code>git pull --rebase</code>s the clone, reads the target <code>build_date</code> from <code>component-versions.json</code>, runs <code>update_image_metadata.py deploy</code>, and commits/pushes <code>changelog-data.json</code> + <code>IMAGE-CHANGELOG.md</code>. The clone needs git push credentials (same pattern as the build server's manifest auto-commit). Every step is non-fatal — on any failure a warning is logged and the run continues.</p>
+<table>
+<thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>LOBOT_CHANGELOG_REPO_DIR</code></td><td><em>(empty — disabled)</em></td><td>Path to a gpu-jupyter-latest clone for deploy-stats recording</td></tr>
+</tbody>
+</table>
 <h3>Email Notifications</h3>
 <h4>Admin summary email</h4>
 <p>Sent to <code>TO_EMAIL</code> when any pull ran or failed. Silent (no email) when all nodes are already up to date. Subject line format:</p>
