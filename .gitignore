@@ -8,6 +8,9 @@
 # Local session memory file
 LOBOT-MEMORY.md
 
+# Draft doc, not yet ready to commit
+ALLOCATIONSTATUS-API.md
+
 # Local IDE files
 .DS_Store
 .vscode.desktop

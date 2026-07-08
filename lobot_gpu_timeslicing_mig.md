@@ -66,11 +66,26 @@ data:
           mig-enabled: true
           mig-devices:
             "1g.24gb": 4
+      all-1g.24gb+gfx:
+        - devices: all
+          mig-enabled: true
+          mig-devices:
+            "1g.24gb+gfx": 4
+      all-1g.24gb+me:
+        - devices: all
+          mig-enabled: true
+          mig-devices:
+            "1g.24gb+me": 1
       all-2g.48gb:
         - devices: all
           mig-enabled: true
           mig-devices:
             "2g.48gb": 2
+      all-2g.48gb+gfx:
+        - devices: all
+          mig-enabled: true
+          mig-devices:
+            "2g.48gb+gfx": 2
       all-disabled:
         - devices: all
           mig-enabled: false
@@ -92,7 +107,20 @@ The MIG manager selects a profile via the node label `nvidia.com/mig.config=<pro
 | `1g.24gb+me` | 1 | 23.62 GiB | With media engine (only 1 per GPU) |
 | `2g.48gb` | 2 | 47.38 GiB | Used on `metroidblackwelltest` |
 | `2g.48gb+gfx` | 2 | 47.38 GiB | With graphics engine |
-| `4g.96gb` | 1 | 95.00 GiB | Full GPU, MIG mode enabled |
+| `4g.96gb` (`all-disabled`) | 1 | 95.00 GiB | Full GPU, MIG mode disabled |
+
+All six profiles above now exist in the `mig-config` ConfigMap, so any of them can be selected via `nvidia.com/mig.config` on a Blackwell node.
+
+---
+
+## Spawn-Page Automated Repartitioning (`lobot_blackwell`)
+
+The spawn page for the `lobot_blackwell` lab includes a "GPU memory partitioning" dropdown offering all six profiles above. Selecting a profile different from the node's current `nvidia.com/mig.config` label triggers automatic repartitioning as part of `pre_spawn_hook` in `config.yaml.bk` (block `pre_spawn_hook`), before the user's pod is created.
+
+- Repartitioning is **blocked** if any pod on the node currently has an active `nvidia.com/gpu` request (any container, non-terminal phase). The user sees a clear spawn error and no label change is made.
+- If the node is idle, the hub patches `nvidia.com/mig.config` and polls `nvidia.com/mig.config.state` for `success`. On `failed`, it bounces the label once (see gotcha #4 below) before giving up and surfacing an error.
+- This requires the hub ServiceAccount to have cluster-scoped RBAC to `get`/`list` nodes, `list` pods across namespaces, and `patch` nodes (restricted via `resourceNames` to the Blackwell node(s)). See `Lobot-tools/apply-config.md` for the RBAC manifest and apply step.
+- All the manual gotchas below (LightDM/Xorg, stale clients, reboot-required first-time MIG enable) still apply — the automation does not work around them. If repartitioning ends up stuck in `failed` after the retry, fall back to the manual steps in this doc.
 
 ---
 

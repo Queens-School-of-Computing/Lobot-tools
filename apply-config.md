@@ -85,7 +85,28 @@ automatic.
    secret values using Python regex replacement; writes result to `config.yaml`
 6. **Downloads** the environment override file (`config-prod.yaml.bk` or
    `config-dev.yaml.bk`) and writes it to `config-env.yaml`
-7. **Prints** the `helm upgrade` command to run next
+7. **Downloads and applies** `rbac-mig-repartition.yaml` via `kubectl apply`
+   (idempotent) — grants the hub ServiceAccount the cluster-scoped access it
+   needs for spawn-page MIG repartitioning. Skipped with a warning if
+   `kubectl` isn't on PATH or the file can't be fetched.
+8. **Prints** the `helm upgrade` command to run next
+
+### RBAC for Spawn-Page MIG Repartitioning
+
+The `lobot_blackwell` spawn form lets users trigger NVIDIA MIG repartitioning
+of the Blackwell node (see `Lobot-tools/lobot_gpu_timeslicing_mig.md`). This
+requires the hub ServiceAccount (`hub`, in the `jhub` namespace by default)
+to `get`/`list`/`watch` nodes, `list` pods cluster-wide, and `patch` the
+target node's `nvidia.com/mig.config` label. These permissions are **not**
+part of the z2jh chart's default hub Role — they're granted by
+`rbac-mig-repartition.yaml` (a `ClusterRole` + `ClusterRoleBinding`) in the
+Lobot repo, applied automatically by `apply-config.sh`.
+
+If the node targeted by the `patch` rule's `resourceNames` changes (e.g.
+`metroidblackwelltest` is renamed once it leaves test status), update
+`resourceNames` in `rbac-mig-repartition.yaml` and re-run `apply-config.sh`
+(or `kubectl apply -f rbac-mig-repartition.yaml` directly) to pick up the
+change — `helm upgrade` does not manage this manifest.
 
 ### Secret Placeholders
 
@@ -132,6 +153,10 @@ automatically deleted. The directory is created if it does not exist.
 [apply-config] Applying secrets...
 [apply-config] Fetching https://raw.githubusercontent.com/.../config-prod.yaml.bk ...
 [apply-config] Env override written to /opt/Lobot/config-env.yaml
+[apply-config] Fetching https://raw.githubusercontent.com/Queens-School-of-Computing/Lobot/main/rbac-mig-repartition.yaml ...
+[apply-config] Applying rbac-mig-repartition.yaml ...
+clusterrole.rbac.authorization.k8s.io/lobot-mig-repartition unchanged
+clusterrolebinding.rbac.authorization.k8s.io/lobot-mig-repartition unchanged
 [apply-config] Done. Config written to /opt/Lobot/config.yaml
 
 Review, then apply with:

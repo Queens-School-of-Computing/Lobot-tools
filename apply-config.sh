@@ -98,6 +98,23 @@ curl -fsSL "$REPO_RAW/$CONFIG_BK_ENV" -o "$OUTPUT_ENV"
 echo "[apply-config] Env override written to $OUTPUT_ENV"
 
 rm -f "$TMPFILE"
+
+# ── Apply RBAC for spawn-page MIG repartitioning ─────────────────────────────
+# Grants the hub ServiceAccount cluster-scoped access to get/list/watch nodes,
+# list pods, and patch the lobot_blackwell node's MIG label. Idempotent.
+RBAC_FILE="rbac-mig-repartition.yaml"
+echo "[apply-config] Fetching $REPO_RAW/$RBAC_FILE ..."
+if curl -fsSL "$REPO_RAW/$RBAC_FILE" -o "$CLUSTER_DIR/$RBAC_FILE"; then
+    if command -v kubectl >/dev/null 2>&1; then
+        echo "[apply-config] Applying $RBAC_FILE ..."
+        kubectl apply -f "$CLUSTER_DIR/$RBAC_FILE"
+    else
+        echo "[apply-config] WARNING: kubectl not found — apply $CLUSTER_DIR/$RBAC_FILE manually." >&2
+    fi
+else
+    echo "[apply-config] WARNING: could not fetch $RBAC_FILE — skipping RBAC apply." >&2
+fi
+
 echo "[apply-config] Done. Config written to $OUTPUT"
 echo ""
 echo "Review, then apply with:"
