@@ -50,6 +50,7 @@ from .logs_screen import LogsScreen
 from .lv_expand_screen import LvExpandScreen
 from .lv_manage_screen import LvManageScreen
 from .lv_tool_screen import LvToolScreen
+from .storage_stewardship_screen import StorageStewardshipScreen
 from .pod_detail_screen import PodDetailScreen
 from .prune_images_screen import PruneImagesScreen
 
@@ -128,6 +129,7 @@ class MainScreen(Screen):
         ("5", "tool_5", "hub upgrade & restart"),
         ("6", "tool_6", "announcement"),
         ("7", "tool_7", "lv tool"),
+        ("8", "tool_8", "storage stewardship"),
         # Pod actions
         ("l", "pod_logs", "Logs"),
         ("x", "pod_exec", "Exec"),
@@ -665,6 +667,9 @@ class MainScreen(Screen):
     def action_tool_7(self) -> None:
         self.app.push_screen(LvToolScreen())
 
+    def action_tool_8(self) -> None:
+        self.app.push_screen(StorageStewardshipScreen())
+
     # ── Actions panel click passthrough ───────────────────────────────────────
 
     def on_job_completed(self, event: JobCompleted) -> None:
@@ -698,6 +703,7 @@ class MainScreen(Screen):
             "5": self.action_tool_5,
             "6": self.action_tool_6,
             "7": self.action_tool_7,
+            "8": self.action_tool_8,
             "`": self.action_show_console,
             "b": self.action_show_jobs,
             "l": self.action_pod_logs,

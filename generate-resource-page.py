@@ -294,6 +294,7 @@ def render_html(lab, info, image_tag, image_label):
         "              </select>\n"
         "              <small id=\"memHelp\" class=\"form-text text-muted\">The amount of memory to be allocated.</small>\n"
         "            </div>\n"
+        "            <input type=\"hidden\" name=\"lab\" value=\"__LAB__\">\n"
         "            <div class=\"form-group\" style=\"display:none;\">\n"
         "              <label for=\"inputPVC\">Storage volume claim</label>\n"
         "              <select name=\"storage_class\" class=\"form-control\" id=\"inputPVC\" aria-describedby=\"emailHelp\">\n"
