@@ -79,20 +79,23 @@ Screen {
     border-title-color: $accent-focus;
 }
 
-#pod-filter-bar {
+#pod-filter-bar,
+#storage-filter-bar {
     height: 1;
     background: $surface;
     layout: horizontal;
     padding: 0 1;
 }
 
-#pod-filter-label {
+#pod-filter-label,
+#storage-filter-label {
     color: $text-muted;
     width: auto;
     content-align: left middle;
 }
 
-#pod-filter-input {
+#pod-filter-input,
+#storage-filter-input {
     width: 1fr;
     background: $surface;
     color: $foreground;
@@ -100,7 +103,8 @@ Screen {
     border-bottom: solid $panel-border;
 }
 
-#pod-filter-input:focus {
+#pod-filter-input:focus,
+#storage-filter-input:focus {
     border-bottom: solid $primary;
     background: $panel;
 }
