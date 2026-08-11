@@ -39,6 +39,7 @@ _ROW1_RIGHT = [
     ("[bold yellow](5)[/] hub upgrade & restart", "hint-tool", "5"),
     ("[bold yellow](6)[/] announce", "hint-tool", "6"),
     ("[bold yellow](7)[/] lv tool", "hint-tool", "7"),
+    ("[bold yellow](8)[/] storage stewardship", "hint-tool", "8"),
 ]
 _ROW2_RIGHT = [
     ("[bold yellow](`)[/] console", "hint-tool", "`"),

@@ -9,13 +9,26 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.screen import Screen
-from textual.widgets import DataTable, Label
+from textual.widgets import DataTable, Input, Label
 
 from ..config import REPO_DIR, LONGHORN_NAMESPACE
 from ..data import command_log
 from ..widgets.tricolour_stripe import TricolourStripe
 
 _RUNTIME_SETTING_YAML = REPO_DIR / "runtime_setting.yaml"
+
+# Sort key functions indexed by column (USER, LAB, PVC, SIZE, USED, STATE,
+# ROBUSTNESS, LAST USED, IDLE). Columns with no sensible sort (PVC name,
+# STATE, ROBUSTNESS, LAST USED timestamp) are omitted from header-click
+# sorting via the idx >= len guard in on_data_table_header_selected.
+_SORT_KEYS = {
+    0: lambda r: r["username"],
+    1: lambda r: r["lab"],
+    3: lambda r: r["size_bytes"],
+    4: lambda r: r["used_bytes"],
+    8: lambda r: r["sort_key"],
+}
+_DEFAULT_SORT_COL = 8
 
 
 def _human_size(num_bytes: int) -> str:
@@ -60,6 +73,7 @@ class StorageStewardshipScreen(Screen):
         Binding("q", "go_back", "Back", priority=True),
         Binding("delete", "delete_pvc", "Delete"),
         Binding("x", "delete_pvc", "Delete"),
+        Binding("f", "focus_filter", "Filter"),
     ]
 
     def __init__(self) -> None:
@@ -67,17 +81,23 @@ class StorageStewardshipScreen(Screen):
         self._rows: list[dict] = []
         self._pending_key: str | None = None
         self._pending_timer = None
+        self._sort_col: int = _DEFAULT_SORT_COL
+        self._sort_rev: bool = True  # idle: stalest-first by default
+        self._filter_text: str = ""
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="screen-header"):
             yield Label(
                 " [bold cyan]STORAGE STEWARDSHIP[/]  PVC / Longhorn volume report  "
-                "[dim][x/Delete] delete (press twice)  [Esc/q] back[/]",
+                "[dim][x/Delete] delete (press twice)  [f] filter  [Esc/q] back[/]",
                 id="screen-header-main",
                 markup=True,
             )
             yield Label("", id="top-bar-cat", markup=False)
         yield TricolourStripe("▄")
+        with Horizontal(id="storage-filter-bar"):
+            yield Label("[bold]filter user:[/]", id="storage-filter-label", markup=True)
+            yield Input(placeholder="type a username…", id="storage-filter-input")
         yield DataTable(id="storage-table", cursor_type="row", zebra_stripes=True)
         yield Label("[dim]Loading PVCs…[/]", id="screen-footer", markup=True)
 
@@ -102,7 +122,6 @@ class StorageStewardshipScreen(Screen):
         return json.loads(stdout.decode(errors="replace"))
 
     async def _load(self) -> None:
-        table = self.query_one("#storage-table", DataTable)
         footer = self.query_one("#screen-footer", Label)
 
         try:
@@ -131,7 +150,7 @@ class StorageStewardshipScreen(Screen):
             status = lh.get("status", {})
             k8s_status = status.get("kubernetesStatus", {})
 
-            size_bytes = int(status.get("actualSize") or 0)
+            actual_bytes = int(status.get("actualSize") or 0)
             spec_size = int(lh.get("spec", {}).get("size") or 0)
             state = status.get("state", "unknown")
             robustness = status.get("robustness", "unknown")
@@ -155,7 +174,9 @@ class StorageStewardshipScreen(Screen):
                 "namespace": namespace,
                 "pv": pv_name,
                 "size": _human_size(spec_size),
-                "used": _human_size(size_bytes),
+                "size_bytes": spec_size,
+                "used": _human_size(actual_bytes),
+                "used_bytes": actual_bytes,
                 "state": state,
                 "robustness": robustness,
                 "last_used": last_pod_ref if last_pod_ref else "unknown",
@@ -163,23 +184,68 @@ class StorageStewardshipScreen(Screen):
                 "sort_key": sort_key,
             })
 
-        rows.sort(key=lambda r: r["sort_key"], reverse=True)
         self._rows = rows
+        self._rebuild_table()
 
-        for row in rows:
+        table = self.query_one("#storage-table", DataTable)
+        if table.row_count:
+            table.focus()
+
+    def _visible_rows(self) -> list[dict]:
+        rows = self._rows
+        if self._filter_text:
+            needle = self._filter_text.lower()
+            rows = [r for r in rows if needle in r["username"]]
+        key_fn = _SORT_KEYS.get(self._sort_col, _SORT_KEYS[_DEFAULT_SORT_COL])
+        return sorted(rows, key=key_fn, reverse=self._sort_rev)
+
+    def _rebuild_table(self) -> None:
+        table = self.query_one("#storage-table", DataTable)
+        try:
+            cursor_row = table.cursor_row
+        except Exception:
+            cursor_row = 0
+
+        table.clear()
+        visible = self._visible_rows()
+        for row in visible:
             table.add_row(
                 row["username"], row["lab"], row["pvc"], row["size"], row["used"],
                 row["state"], row["robustness"], row["last_used"], row["idle_label"],
                 key=row["pvc"],
             )
 
-        count = len(rows)
+        if visible:
+            table.cursor_coordinate = (min(cursor_row, len(visible) - 1), 0)
+
+        footer = self.query_one("#screen-footer", Label)
+        total = len(self._rows)
+        shown = len(visible)
+        count_label = f"{shown}/{total}" if shown != total else f"{total}"
         footer.update(
-            f"[dim]{count} PVC{'s' if count != 1 else ''}  —  "
-            "[bold]x/Delete[/bold] delete (press twice)  [bold]Esc/q[/bold] back[/]"
+            f"[dim]{count_label} PVC{'s' if total != 1 else ''}  —  "
+            "[bold]x/Delete[/bold] delete (press twice)  [bold]f[/bold] filter  "
+            "[bold]Esc/q[/bold] back[/]"
         )
-        if count:
-            table.focus()
+
+    def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
+        idx = event.column_index
+        if idx not in _SORT_KEYS:
+            return
+        if self._sort_col == idx:
+            self._sort_rev = not self._sort_rev
+        else:
+            self._sort_col = idx
+            self._sort_rev = False
+        self._rebuild_table()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "storage-filter-input":
+            self._filter_text = event.value.strip().lower()
+            self._rebuild_table()
+
+    def action_focus_filter(self) -> None:
+        self.query_one("#storage-filter-input", Input).focus()
 
     def _selected(self) -> dict | None:
         table = self.query_one("#storage-table", DataTable)
