@@ -84,6 +84,7 @@ class StorageStewardshipScreen(Screen):
         self._sort_col: int = _DEFAULT_SORT_COL
         self._sort_rev: bool = True  # idle: stalest-first by default
         self._filter_text: str = ""
+        self._needs_reload: bool = False
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="screen-header"):
@@ -108,6 +109,11 @@ class StorageStewardshipScreen(Screen):
             "ROBUSTNESS", "LAST USED", "IDLE",
         )
         self.run_worker(self._load(), exclusive=True)
+
+    def on_screen_resume(self) -> None:
+        if self._needs_reload:
+            self._needs_reload = False
+            self.run_worker(self._load(), exclusive=True)
 
     async def _kubectl_json(self, *args: str) -> dict:
         proc = await asyncio.create_subprocess_exec(
@@ -301,6 +307,7 @@ class StorageStewardshipScreen(Screen):
             )
         shell_cmd = " && ".join(" ".join(shlex.quote(a) for a in step) for step in steps)
         argv = ["sh", "-c", shell_cmd]
+        self._needs_reload = True
         self.app.push_screen(
             ActionScreen(f"delete-pvc-{row['pvc']}", argv, auto_close=True)
         )
