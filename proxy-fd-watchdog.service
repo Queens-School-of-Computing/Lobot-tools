@@ -1,0 +1,11 @@
+# Oneshot service called by proxy-fd-watchdog.timer.
+# Install alongside proxy-fd-watchdog.timer.
+
+[Unit]
+Description=Check JupyterHub proxy pod for FD/memory leak
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/Lobot/tools
+ExecStart=/opt/Lobot/tools/proxy-fd-watchdog.sh
+User=croot
