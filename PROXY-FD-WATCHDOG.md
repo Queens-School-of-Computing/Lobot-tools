@@ -118,7 +118,7 @@ The proxy thresholds carry wide margin above the healthy baseline and well below
 
 ## When You Get an Alert
 
-The email includes the pod name, node, current FD count/RSS, and the restart command. To resolve:
+The email includes the pod name, node, and current FD count/RSS, plus ready-to-paste commands: look up the proxy pod, confirm its FD count/RSS, delete it, and watch the replacement start. Deleting the pod drops browser connections briefly (users may need to refresh), but running notebook servers are not stopped. The short version:
 
 ```bash
 kubectl -n jhub delete pod <proxy-pod-name>
@@ -128,7 +128,7 @@ The Deployment recreates the pod automatically. FD count and RSS should drop bac
 
 ### Hub alert
 
-The email includes the hub pod name, the `jupyterhub` PID, its FD count, and its current soft limit. To buy headroom, raise the soft limit to 4096 and leave the hard limit alone (lowering the hard limit can't be undone inside the container):
+The email includes the hub pod name, the `jupyterhub` PID, its FD count, and its current soft limit, plus ready-to-paste commands (filled in with the PID found by the check) to look up the hub pod, check its FD usage and limit, and apply the patch below. To buy headroom, raise the soft limit to 4096 and leave the hard limit alone (lowering the hard limit can't be undone inside the container):
 
 ```bash
 kubectl -n jhub exec <hub-pod-name> -c hub -- prlimit --pid=<pid> --nofile=4096:524288

@@ -232,6 +232,13 @@ fi
 
 echo "ALERT: $REASON"
 
+# One command per box. Email clients strip JavaScript, so a real copy button
+# isn't possible; user-select:all makes one click select the whole command
+# where supported (e.g. Apple Mail) and is ignored elsewhere. pre-wrap keeps
+# long commands readable without adding line breaks to the copied text.
+CMD='<pre style="user-select:all;-webkit-user-select:all;white-space:pre-wrap;word-break:break-all;background:#f4f4f4;border:1px solid #ddd;border-radius:4px;padding:8px 10px;margin:4px 0 12px;font-family:monospace">'
+STEP='<p style="margin:12px 0 0">'
+
 BODY_TMPFILE=$(mktemp)
 cat > "$BODY_TMPFILE" <<HTMLEOF
 <html><body style="font-family:sans-serif">
@@ -241,17 +248,34 @@ cat > "$BODY_TMPFILE" <<HTMLEOF
 ${EMAIL_ROWS}
 <tr><td>Checked at</td><td>$(date -u +%Y-%m-%dT%H:%M:%SZ)</td></tr>
 </table>
-<h3>If the proxy is over threshold</h3>
+<h3>If the proxy is over threshold: restart the proxy pod</h3>
 <p>This is the known configurable-http-proxy FD/memory leak (diagnosed 2026-09-25).
-Healthy baseline right after a restart is ~150 FDs / ~64MB RSS. To restart:</p>
-<pre>kubectl -n ${NAMESPACE} delete pod ${PROXY_POD:-&lt;proxy-pod-name&gt;}</pre>
-<h3>If the hub is over threshold</h3>
+Healthy baseline right after a restart is ~150 FDs / ~64MB RSS. Deleting the pod
+is safe: the Deployment recreates it within seconds and the leaked FDs/memory are
+released. Browser connections through the proxy drop briefly, so users may need to
+refresh their tab. Running notebook servers are not stopped.</p>
+${STEP}<b>1.</b> Find the proxy pod:</p>
+${CMD}PROXY_POD=\$(kubectl -n ${NAMESPACE} get pod -l component=proxy -o jsonpath='{.items[0].metadata.name}'); echo "\$PROXY_POD"</pre>
+${STEP}<b>2.</b> Confirm usage is high before restarting (FD count, then RSS in KB):</p>
+${CMD}kubectl -n ${NAMESPACE} exec \$PROXY_POD -- sh -c 'ls /proc/1/fd | wc -l; grep VmRSS /proc/1/status'</pre>
+${STEP}<b>3.</b> Restart the proxy pod:</p>
+${CMD}kubectl -n ${NAMESPACE} delete pod \$PROXY_POD</pre>
+${STEP}<b>4.</b> Watch the replacement come up (Ctrl-C once it shows Running 1/1):</p>
+${CMD}kubectl -n ${NAMESPACE} get pod -l component=proxy -w</pre>
+<h3>If the hub is over threshold: raise the hub's open-file limit</h3>
 <p>The jupyterhub process normally holds ~13 FDs (checked 2026-10-05). Its soft
 limit is 1024 by default, or 4096 if the prlimit patch below has been applied
 since the last hub pod restart. Past the soft limit, new opens fail with
-"Too many open files" (failed spawns / API calls). To raise the soft limit
-until the next hub pod restart:</p>
-<pre>kubectl -n ${NAMESPACE} exec ${HUB_POD:-&lt;hub-pod-name&gt;} -c hub -- prlimit --pid=${HUB_PID:-&lt;pid&gt;} --nofile=4096:524288</pre>
+"Too many open files" (failed spawns / API calls). The patch raises the soft
+limit until the next hub pod restart. A count near 900 means something in the
+hub is leaking, so check the hub logs too. The jupyterhub PID found by this
+check is ${HUB_PID:-unknown (7 on 2026-10-05)}; the commands below use it.</p>
+${STEP}<b>1.</b> Find the hub pod:</p>
+${CMD}HUB_POD=\$(kubectl get pods -n ${NAMESPACE} -o json | jq -r '.items[] | select(.metadata.name | startswith("hub-")) | .metadata.name' | head -n1); echo "\$HUB_POD"</pre>
+${STEP}<b>2.</b> Check current FD usage and limits first:</p>
+${CMD}kubectl exec -n ${NAMESPACE} \$HUB_POD -- sh -c 'ls /proc/${HUB_PID:-7}/fd | wc -l; grep "open files" /proc/${HUB_PID:-7}/limits'</pre>
+${STEP}<b>3.</b> Set the soft limit to 4096 and keep the hard limit at 524288:</p>
+${CMD}kubectl exec -n ${NAMESPACE} \$HUB_POD -- sh -c 'command -v prlimit &amp;&amp; prlimit --pid=${HUB_PID:-7} --nofile=4096:524288'</pre>
 <p>This watchdog does NOT restart or change anything automatically.</p>
 </body></html>
 HTMLEOF

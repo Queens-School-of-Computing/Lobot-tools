@@ -79,12 +79,12 @@ bash /opt/Lobot/tools/proxy-fd-watchdog.sh
 <hr />
 
 <h2>When You Get an Alert</h2>
-<p>The email includes the pod name, node, current FD count/RSS, and the restart command. To resolve:</p>
+<p>The email includes the pod name, node, and current FD count/RSS, plus ready-to-paste commands: look up the proxy pod, confirm its FD count/RSS, delete it, and watch the replacement start. Deleting the pod drops browser connections briefly (users may need to refresh), but running notebook servers are not stopped. The short version:</p>
 <pre><code>kubectl -n jhub delete pod &lt;proxy-pod-name&gt;</code></pre>
 <p>The Deployment recreates the pod automatically. FD count and RSS should drop back to baseline (~150 FDs, ~64MB) immediately, and JupyterHub latency should resolve. This is a mitigation, not a fix — if alerts recur frequently, it's worth checking for a newer <code>configurable-http-proxy</code> image with the underlying leak fixed.</p>
 
 <h3>Hub alert</h3>
-<p>The email includes the hub pod name, the <code>jupyterhub</code> PID, its FD count, and its current soft limit. To buy headroom, raise the soft limit to 4096 and leave the hard limit alone (lowering the hard limit can't be undone inside the container):</p>
+<p>The email includes the hub pod name, the <code>jupyterhub</code> PID, its FD count, and its current soft limit, plus ready-to-paste commands (filled in with the PID found by the check) to look up the hub pod, check its FD usage and limit, and apply the patch below. To buy headroom, raise the soft limit to 4096 and leave the hard limit alone (lowering the hard limit can't be undone inside the container):</p>
 <pre><code>kubectl -n jhub exec &lt;hub-pod-name&gt; -c hub -- prlimit --pid=&lt;pid&gt; --nofile=4096:524288</code></pre>
 <p>This lasts only until the hub pod restarts (any helm upgrade restarts it). The hub normally holds ~13 FDs, so a count near 900 means something is leaking. Check the hub logs and see what the open handles are: <code>kubectl -n jhub exec &lt;hub-pod-name&gt; -c hub -- ls -l /proc/&lt;pid&gt;/fd</code>.</p>
 <hr />
