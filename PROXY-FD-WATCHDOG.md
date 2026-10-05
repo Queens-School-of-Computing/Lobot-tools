@@ -32,9 +32,9 @@ The pod had already restarted 4 times roughly a week before this incident, sugge
 
 ### Hub FD check
 
-Added 2026-10-05. During the proxy incident, a manual `prlimit` patch raised the hub process's open-file limit to 65536. That patch only lasts until the hub pod restarts, and it has since been dropped. The hub now runs at the container default soft limit of **1024 open files**, and when checked held **13**. Rather than raising the limit up front, the watchdog alerts at **900**. That leaves room to act before new opens fail with "Too many open files" (which would show up as failed spawns or API calls).
+Added 2026-10-05. During the proxy incident, a manual `prlimit` patch raised the hub process's open-file limit to 65536. That patch only lasts until the hub pod restarts, which drops the limit back to the container default of **1024 open files**. On 2026-10-05 the patch was reapplied at a lower **4096** (soft limit only, hard limit left at 524288), and the process held **13** files. Because a pod restart can quietly put it back to 1024, the watchdog alerts at **900**, which is under both limits. That leaves room to act before new opens fail with "Too many open files" (which would show up as failed spawns or API calls).
 
-The `jupyterhub` process runs under `tini`, so it is not PID 1 (it was PID 7 when checked). The script finds it by command line (`bin/jupyterhub `), skipping `tini` and the idle culler, so it doesn't depend on the PID staying the same.
+The `jupyterhub` process runs under `tini`, so it is not PID 1 (it was PID 7 when checked). The script finds it by its second command-line argument, which is exactly `/usr/local/bin/jupyterhub`. That skips `tini` (`--`), the idle culler (`-m`), and the probe's own shell (`-c`), so it doesn't depend on the PID staying the same. (A first version matched the text `bin/jupyterhub ` anywhere in the command line, and matched its own probe shell, whose script contains that text.) The alert email shows the soft limit actually in effect.
 
 ---
 
@@ -106,13 +106,13 @@ All configuration is at the top of `proxy-fd-watchdog.sh`:
 | `NAMESPACE` | `jhub` | Namespace the proxy and hub pods run in |
 | `FD_THRESHOLD` | `20000` | Alert if the proxy's open FD count reaches or exceeds this (healthy baseline ~150) |
 | `RSS_KB_THRESHOLD` | `1500000` (1.5GB) | Alert if the proxy's resident memory reaches or exceeds this (healthy baseline ~64MB) |
-| `HUB_FD_THRESHOLD` | `900` | Alert if the hub's `jupyterhub` process FD count reaches or exceeds this (healthy ~13, default soft limit 1024) |
+| `HUB_FD_THRESHOLD` | `900` | Alert if the hub's `jupyterhub` process FD count reaches or exceeds this (healthy ~13; soft limit 1024 by default, 4096 when patched) |
 | `EMAIL_ENABLED` | `true` | Set `false` to disable email (still logs to stdout/journald) |
 | `SMTP_SERVER` / `SMTP_PORT` | `innovate.cs.queensu.ca` / `25` | Mail relay, same as `image-pull.sh` |
 | `FROM_EMAIL` | `lobot+tools@cs.queensu.ca` | Sender address |
 | `TO_EMAIL` | `aaron.visser+lobot@queensu.ca,whb1+lobot@queensu.ca` | Comma-separated recipients |
 
-The proxy thresholds carry wide margin above the healthy baseline and well below the failure state observed in the 2026-09-25 incident, so an alert means something is clearly trending wrong, not noise. The hub threshold sits just under the hub's hard failure point (the 1024 soft limit).
+The proxy thresholds carry wide margin above the healthy baseline and well below the failure state observed in the 2026-09-25 incident, so an alert means something is clearly trending wrong, not noise. The hub threshold sits just under the default 1024 soft limit, so it still gives warning if a pod restart has dropped the 4096 patch.
 
 ---
 
@@ -156,7 +156,7 @@ and adjust the selector in `proxy-fd-watchdog.sh` if needed.
 kubectl -n jhub exec <hub-pod-name> -c hub -- sh -c 'for p in /proc/[0-9]*; do printf "%s  " "${p#/proc/}"; tr "\0" " " < $p/cmdline; echo; done'
 ```
 
-If a hub image change altered the command line, adjust the `bin/jupyterhub ` match in `HUB_PROBE`.
+If a hub image change altered the command line, adjust the `*/bin/jupyterhub` match in `HUB_PROBE`.
 
 **Email fails silently** — run manually and check stdout for `⚠️ Email notification failed to send`; the underlying Python exception is printed above that line. Common causes: SMTP relay unreachable from this host, or `python3` not installed.
 

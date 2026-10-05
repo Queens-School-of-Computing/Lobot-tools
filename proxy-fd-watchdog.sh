@@ -20,9 +20,10 @@
 #   kubectl -n jhub delete pod <proxy-pod-name>
 #
 # It also checks the FD count of the jupyterhub process in the hub pod
-# (added 2026-10-05). That process runs at the container default soft
-# limit of 1024 open files and normally holds ~13; the alert fires at 900
-# so there is warning before "Too many open files" breaks spawns.
+# (added 2026-10-05). That process normally holds ~13. Its soft limit is
+# 4096 via a manual prlimit patch, which resets to the container default of
+# 1024 whenever the hub pod restarts. The alert fires at 900 so there is
+# warning before "Too many open files" breaks spawns even at the default.
 #
 # Run manually:
 #   bash proxy-fd-watchdog.sh
@@ -39,7 +40,7 @@ set -uo pipefail
 NAMESPACE="jhub"
 FD_THRESHOLD=20000        # healthy baseline ~150; alert well before 141k-class failure
 RSS_KB_THRESHOLD=1500000  # 1.5GB; healthy baseline ~64MB
-HUB_FD_THRESHOLD=900      # hub process; healthy ~13, default soft limit 1024
+HUB_FD_THRESHOLD=900      # hub process; healthy ~13; soft limit 1024 default, 4096 when patched
 
 # ==========================================
 # Email configuration (same pattern as image-pull.sh / image-cleanup.sh)
@@ -170,13 +171,20 @@ fi
 # ------------------------------------------
 # The hub process runs under tini, so it is not PID 1 (it was PID 7 when
 # checked 2026-10-05). Find it by command line instead of hardcoding the
-# PID. Matching "bin/jupyterhub " skips tini ("tini -- jupyterhub ...") and
-# the idle culler ("jupyterhub_idle_culler"). Prints: <pid> <fds> <soft limit>
+# PID: its second argument is exactly ".../bin/jupyterhub"
+# ("/usr/local/bin/python3.12 /usr/local/bin/jupyterhub --config ...").
+# Matching argv[1] exactly skips tini ("--"), the idle culler ("-m"), and
+# this probe's own sh ("-c"), whose script text contains the search string
+# -- a substring match on the whole command line matched the probe itself.
+# Prints: <pid> <fds> <soft limit>
 HUB_PROBE='for p in /proc/[0-9]*; do
-  if tr "\0" " " < $p/cmdline 2>/dev/null | grep -q "bin/jupyterhub "; then
-    echo "${p#/proc/} $(ls $p/fd | wc -l) $(grep "Max open files" $p/limits | awk "{print \$4}")"
-    break
-  fi
+  [ "${p#/proc/}" = "$$" ] && continue
+  arg1=$(tr "\0" "\n" < $p/cmdline 2>/dev/null | sed -n 2p)
+  case "$arg1" in
+    */bin/jupyterhub)
+      echo "${p#/proc/} $(ls $p/fd | wc -l) $(grep "Max open files" $p/limits | awk "{print \$4}")"
+      break ;;
+  esac
 done'
 
 HUB_POD=$(kubectl -n "$NAMESPACE" get pod -l component=hub \
@@ -238,8 +246,9 @@ ${EMAIL_ROWS}
 Healthy baseline right after a restart is ~150 FDs / ~64MB RSS. To restart:</p>
 <pre>kubectl -n ${NAMESPACE} delete pod ${PROXY_POD:-&lt;proxy-pod-name&gt;}</pre>
 <h3>If the hub is over threshold</h3>
-<p>The jupyterhub process normally holds ~13 FDs against a default soft limit of
-1024 (checked 2026-10-05). Past the soft limit, new opens fail with
+<p>The jupyterhub process normally holds ~13 FDs (checked 2026-10-05). Its soft
+limit is 1024 by default, or 4096 if the prlimit patch below has been applied
+since the last hub pod restart. Past the soft limit, new opens fail with
 "Too many open files" (failed spawns / API calls). To raise the soft limit
 until the next hub pod restart:</p>
 <pre>kubectl -n ${NAMESPACE} exec ${HUB_POD:-&lt;hub-pod-name&gt;} -c hub -- prlimit --pid=${HUB_PID:-&lt;pid&gt;} --nofile=4096:524288</pre>
