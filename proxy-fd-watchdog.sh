@@ -254,14 +254,10 @@ Healthy baseline right after a restart is ~150 FDs / ~64MB RSS. Deleting the pod
 is safe: the Deployment recreates it within seconds and the leaked FDs/memory are
 released. Browser connections through the proxy drop briefly, so users may need to
 refresh their tab. Running notebook servers are not stopped.</p>
-${STEP}<b>1.</b> Find the proxy pod:</p>
-${CMD}PROXY_POD=\$(kubectl -n ${NAMESPACE} get pod -l component=proxy -o jsonpath='{.items[0].metadata.name}'); echo "\$PROXY_POD"</pre>
-${STEP}<b>2.</b> Confirm usage is high before restarting (FD count, then RSS in KB):</p>
-${CMD}kubectl -n ${NAMESPACE} exec \$PROXY_POD -- sh -c 'ls /proc/1/fd | wc -l; grep VmRSS /proc/1/status'</pre>
-${STEP}<b>3.</b> Restart the proxy pod:</p>
-${CMD}kubectl -n ${NAMESPACE} delete pod \$PROXY_POD</pre>
-${STEP}<b>4.</b> Watch the replacement come up (Ctrl-C once it shows Running 1/1):</p>
-${CMD}kubectl -n ${NAMESPACE} get pod -l component=proxy -w</pre>
+${STEP}<b>1.</b> Find the proxy pod and confirm usage is high before restarting (prints the pod name, FD count, then RSS in KB):</p>
+${CMD}PROXY_POD=\$(kubectl -n ${NAMESPACE} get pod -l component=proxy -o jsonpath='{.items[0].metadata.name}'); echo "\$PROXY_POD"; kubectl -n ${NAMESPACE} exec \$PROXY_POD -- sh -c 'ls /proc/1/fd | wc -l; grep VmRSS /proc/1/status'</pre>
+${STEP}<b>2.</b> Restart the proxy pod and watch the replacement come up (Ctrl-C once it shows Running 1/1):</p>
+${CMD}kubectl -n ${NAMESPACE} delete pod \$PROXY_POD &amp;&amp; kubectl -n ${NAMESPACE} get pod -l component=proxy -w</pre>
 <h3>If the hub is over threshold: raise the hub's open-file limit</h3>
 <p>The jupyterhub process normally holds ~13 FDs (checked 2026-10-05). Its soft
 limit is 1024 by default, or 4096 if the prlimit patch below has been applied
@@ -270,11 +266,9 @@ since the last hub pod restart. Past the soft limit, new opens fail with
 limit until the next hub pod restart. A count near 900 means something in the
 hub is leaking, so check the hub logs too. The jupyterhub PID found by this
 check is ${HUB_PID:-unknown (7 on 2026-10-05)}; the commands below use it.</p>
-${STEP}<b>1.</b> Find the hub pod:</p>
-${CMD}HUB_POD=\$(kubectl get pods -n ${NAMESPACE} -o json | jq -r '.items[] | select(.metadata.name | startswith("hub-")) | .metadata.name' | head -n1); echo "\$HUB_POD"</pre>
-${STEP}<b>2.</b> Check current FD usage and limits first:</p>
-${CMD}kubectl exec -n ${NAMESPACE} \$HUB_POD -- sh -c 'ls /proc/${HUB_PID:-7}/fd | wc -l; grep "open files" /proc/${HUB_PID:-7}/limits'</pre>
-${STEP}<b>3.</b> Set the soft limit to 4096 and keep the hard limit at 524288:</p>
+${STEP}<b>1.</b> Find the hub pod and check current FD usage and limits first (prints the pod name, FD count, then the open-files limits):</p>
+${CMD}HUB_POD=\$(kubectl get pods -n ${NAMESPACE} -o json | jq -r '.items[] | select(.metadata.name | startswith("hub-")) | .metadata.name' | head -n1); echo "\$HUB_POD"; kubectl exec -n ${NAMESPACE} \$HUB_POD -- sh -c 'ls /proc/${HUB_PID:-7}/fd | wc -l; grep "open files" /proc/${HUB_PID:-7}/limits'</pre>
+${STEP}<b>2.</b> Set the soft limit to 4096 and keep the hard limit at 524288:</p>
 ${CMD}kubectl exec -n ${NAMESPACE} \$HUB_POD -- sh -c 'command -v prlimit &amp;&amp; prlimit --pid=${HUB_PID:-7} --nofile=4096:524288'</pre>
 <p>This watchdog does NOT restart or change anything automatically.</p>
 </body></html>
